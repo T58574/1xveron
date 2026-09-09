@@ -1,0 +1,69 @@
+@import '@xterm/xterm/css/xterm.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --veron-bg: #121316;
+    --veron-sidebar: #16171c;
+    --veron-card: #1a1c23;
+    --veron-card-header: #1e212b;
+    --veron-border: #2a2d3d;
+    --veron-text: #f1f5f9;
+    --veron-text-muted: #94a3b8;
+    --veron-accent: #38bdf8;
+  }
+
+  .light {
+    --veron-bg: #f8fafc;
+    --veron-sidebar: #f1f5f9;
+    --veron-card: #ffffff;
+    --veron-card-header: #f8fafc;
+    --veron-border: #e2e8f0;
+    --veron-text: #0f172a;
+    --veron-text-muted: #64748b;
+    --veron-accent: #0284c7;
+  }
+
+  body {
+    background-color: var(--veron-bg);
+    color: var(--veron-text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Xterm customizations */
+.xterm {
+  padding: 8px 12px;
+  height: 100%;
+}
+.xterm .xterm-viewport {
+  overflow-y: auto !important;
+}
+
+/* Glowing pulse for active session */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}
+.active-pulse {
+  animation: pulse-glow 2s infinite ease-in-out;
+}

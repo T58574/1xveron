@@ -1,0 +1,28 @@
+[package]
+name = "veron-server"
+version = "0.1.0"
+description = "Veron Terminal Multiplexer Core"
+edition = "2021"
+
+[[bin]]
+name = "veron"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1.40", features = ["full"] }
+portable-pty = "0.8"
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+local-ip-address = "0.6"
+uuid = { version = "1.10", features = ["v4", "fast-rng"] }
+chrono = { version = "0.4" }
+parking_lot = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures = "0.3"
+dirs = "5.0"
+base64 = "0.22"
+which = "6.0"
+hostname = "0.4"
