@@ -27,26 +27,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let auth_token = uuid::Uuid::new_v4().to_string()[..8].to_uppercase();
     let auth_token_clone = auth_token.clone();
 
+    // Create session manager on main thread to ensure clean lifecycle management
+    let session_manager = Arc::new(SessionManager::new());
+    let initial_cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "C:\\".to_string());
+
+    let _ = session_manager.create_session(
+        None,
+        Some(initial_cwd),
+        Some("PowerShell 1".into()),
+        Some("default".into()),
+        24,
+        80,
+    );
+
+    let session_manager_for_server = session_manager.clone();
+    let session_manager_for_events = session_manager.clone();
+    let session_manager_for_sig = session_manager.clone();
+
     // Start background Tokio runtime for ConPTY engine and Axum server
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
         rt.block_on(async move {
-            let session_manager = Arc::new(SessionManager::new());
-            let initial_cwd = std::env::current_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "C:\\".to_string());
-
-            let _ = session_manager.create_session(
-                None,
-                Some(initial_cwd),
-                Some("PowerShell 1".into()),
-                Some("default".into()),
-                24,
-                80,
-            );
-
             let state = AppState {
-                manager: session_manager,
+                manager: session_manager_for_server,
                 port,
                 auth_token: auth_token_clone,
             };
@@ -76,9 +81,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if server_only {
         println!("Running in server-only / headless mode. Press Ctrl+C to exit.");
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(3600));
-        }
+        let rt_sig = tokio::runtime::Runtime::new().expect("Failed to create signal runtime");
+        rt_sig.block_on(async move {
+            tokio::signal::ctrl_c().await.ok();
+            println!("\n[Shutdown] Terminating all session process trees...");
+            session_manager_for_sig.close_all();
+            println!("[Shutdown] Clean exit complete.");
+            std::process::exit(0);
+        });
+        return Ok(());
     }
 
     // Launch Native Windows Desktop Window
@@ -102,6 +113,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..
         } = event
         {
+            println!("\n[Shutdown] Window closed: terminating all terminal process trees...");
+            session_manager_for_events.close_all();
+            println!("[Shutdown] All processes closed cleanly.");
             *control_flow = ControlFlow::Exit;
         }
     });

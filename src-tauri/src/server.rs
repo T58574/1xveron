@@ -87,6 +87,11 @@ pub struct InputPayload {
     pub data: String,
 }
 
+#[derive(Deserialize)]
+pub struct RenamePayload {
+    pub name: String,
+}
+
 fn is_authorized(headers: &HeaderMap, query_token: Option<&str>, state: &AppState) -> bool {
     // 1. Check query parameter token
     if let Some(t) = query_token {
@@ -117,7 +122,7 @@ fn is_authorized(headers: &HeaderMap, query_token: Option<&str>, state: &AppStat
 pub fn create_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::PATCH, Method::OPTIONS])
         .allow_headers(Any);
 
     let dist_dir = if std::path::Path::new("./dist").exists() {
@@ -132,7 +137,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/system", get(get_system_info))
         .route("/api/auth/verify", post(verify_token))
         .route("/api/sessions", get(list_sessions).post(create_session))
-        .route("/api/sessions/:id", delete(close_session))
+        .route("/api/sessions/:id", delete(close_session).patch(rename_session))
         .route("/api/sessions/:id/resize", post(resize_session))
         .route("/api/sessions/:id/input", post(send_session_input))
         .route("/api/upload", post(upload_screenshot))
@@ -270,6 +275,23 @@ async fn close_session(
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND
+    }
+}
+
+async fn rename_session(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<RenamePayload>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
+    }
+    if state.manager.rename_session(&id, &payload.name) {
+        Ok(StatusCode::OK)
+    } else {
+        Err((StatusCode::NOT_FOUND, "Session not found".into()))
     }
 }
 

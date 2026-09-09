@@ -221,6 +221,40 @@ impl SessionManager {
         }
     }
 
+    pub fn close_all(&self) {
+        let mut sessions = self.sessions.write();
+        let count = sessions.len();
+        if count > 0 {
+            info!("Closing all {} active terminal sessions...", count);
+            for (id, session) in sessions.drain() {
+                let mut pty = session.pty.lock();
+                pty.kill();
+                info!("Cleaned up session process tree for {}", id);
+            }
+        }
+    }
+
+    pub fn rename_session(&self, id: &str, new_name: &str) -> bool {
+        let mut sessions = self.sessions.write();
+        if let Some(session) = sessions.get(id) {
+            let updated = Arc::new(Session {
+                id: session.id.clone(),
+                name: new_name.trim().to_string(),
+                shell: session.shell.clone(),
+                cwd: session.cwd.clone(),
+                workspace_id: session.workspace_id.clone(),
+                created_at: session.created_at,
+                history: session.history.clone(),
+                output_tx: session.output_tx.clone(),
+                pty: session.pty.clone(),
+            });
+            sessions.insert(id.to_string(), updated);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn write_input(&self, id: &str, data: &[u8]) -> Result<(), String> {
         if let Some(session) = self.get_session(id) {
             let mut pty = session.pty.lock();
@@ -321,5 +355,11 @@ impl SessionManager {
             }
         }
         Ok(deleted)
+    }
+}
+
+impl Drop for SessionManager {
+    fn drop(&mut self) {
+        self.close_all();
     }
 }

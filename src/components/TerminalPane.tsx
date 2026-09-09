@@ -14,6 +14,7 @@ interface TerminalPaneProps {
   onClose: () => void;
   onMaximize: () => void;
   onSplit: () => void;
+  onRename?: (newName: string) => void;
   theme: 'dark' | 'light';
   onToast: (msg: string) => void;
 }
@@ -26,6 +27,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   onClose,
   onMaximize,
   onSplit,
+  onRename,
   theme,
   onToast,
 }) => {
@@ -34,6 +36,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isCopiedPath, setIsCopiedPath] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newName, setNewName] = useState(session?.name || '');
+
+  useEffect(() => {
+    setNewName(session?.name || '');
+  }, [session?.name]);
 
   useEffect(() => {
     if (!containerRef.current || !session) return;
@@ -96,6 +104,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
+    try {
+      fitAddon.fit();
+    } catch {}
 
     try {
       const webglAddon = new WebglAddon();
@@ -266,9 +277,41 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               session.is_alive ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]' : 'bg-zinc-600'
             }`}
           />
-          <span className="text-xs font-medium truncate max-w-[150px] text-zinc-100 tracking-tight">
-            {session.name}
-          </span>
+          {isEditingName ? (
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onBlur={() => {
+                setIsEditingName(false);
+                if (newName.trim() && newName !== session.name) {
+                  onRename?.(newName.trim());
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setIsEditingName(false);
+                  if (newName.trim() && newName !== session.name) {
+                    onRename?.(newName.trim());
+                  }
+                } else if (e.key === 'Escape') {
+                  setIsEditingName(false);
+                  setNewName(session.name);
+                }
+              }}
+              className="text-xs font-medium bg-[#090a0d] border border-amber-400/60 rounded px-1.5 py-0.5 text-zinc-100 outline-none w-28"
+              autoFocus
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              onDoubleClick={() => setIsEditingName(true)}
+              title="Double click to rename session"
+              className="text-xs font-medium truncate max-w-[150px] text-zinc-100 tracking-tight cursor-pointer hover:text-amber-400 transition-colors"
+            >
+              {session.name}
+            </span>
+          )}
           <button
             onClick={copyCwd}
             title={`Copy: ${session.cwd}`}

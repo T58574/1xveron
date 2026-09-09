@@ -188,3 +188,13 @@ export async function sendSessionInput(sessionId: string, data: string): Promise
   });
   if (!res.ok) throw new Error('Failed to send input to session');
 }
+
+export async function renameSession(sessionId: string, name: string): Promise<void> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}${tokenParam}`, {
+    method: 'PATCH',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error('Failed to rename session');
+}

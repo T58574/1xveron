@@ -8,6 +8,7 @@ import {
   clearCaptures,
   openCapturesFolder,
   sendSessionInput,
+  renameSession,
   createSession,
   closeSession,
   getAuthToken,
@@ -32,7 +33,20 @@ export const App: React.FC = () => {
   const [slots, setSlots] = useState<(string | null)[]>([null, null, null, null, null, null]);
   const [activePaneIndex, setActivePaneIndex] = useState<number>(0);
 
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(1);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => {
+    const saved = localStorage.getItem('veron_layout_mode');
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (parsed >= 1 && parsed <= 6) return parsed as LayoutMode;
+    }
+    return 1;
+  });
+
+  const handleSetLayoutMode = (mode: LayoutMode) => {
+    setLayoutMode(mode);
+    localStorage.setItem('veron_layout_mode', String(mode));
+  };
+
   const [maximizedPaneIndex, setMaximizedPaneIndex] = useState<number | null>(null);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -258,6 +272,26 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleRenameSession = async (id: string, newName: string) => {
+    try {
+      await renameSession(id, newName);
+      setSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, name: newName } : s))
+      );
+      showToast(`Renamed to "${newName}"`);
+    } catch {
+      showToast('Failed to rename session');
+    }
+  };
+
+  const handleSplitPane = async () => {
+    if (layoutMode < 6) {
+      const nextMode = (layoutMode + 1) as LayoutMode;
+      handleSetLayoutMode(nextMode);
+    }
+    await handleCreateSession();
+  };
+
   // If unauthenticated (e.g. mobile client connecting over LAN without token)
   if (!isAuthenticated) {
     return (
@@ -323,66 +357,48 @@ export const App: React.FC = () => {
     );
   }
 
+  // Helper to render a terminal pane for slot index
+  const renderPane = (idx: number) => {
+    const s = getSessionForSlot(idx);
+    return (
+      <TerminalPane
+        key={idx}
+        session={s}
+        isActive={activePaneIndex === idx}
+        isMaximized={maximizedPaneIndex === idx}
+        onFocus={() => setActivePaneIndex(idx)}
+        onClose={() => {
+          if (s) handleCloseSession(s.id);
+        }}
+        onMaximize={() => setMaximizedPaneIndex(maximizedPaneIndex === idx ? null : idx)}
+        onSplit={handleSplitPane}
+        onRename={(name) => {
+          if (s) handleRenameSession(s.id, name);
+        }}
+        theme={theme}
+        onToast={showToast}
+      />
+    );
+  };
+
   // Render desktop grid layout based on 1 to 6 windows
   const renderGridLayout = () => {
     if (maximizedPaneIndex !== null) {
-      const s = getSessionForSlot(maximizedPaneIndex);
-      return (
-        <TerminalPane
-          session={s}
-          isActive={true}
-          isMaximized={true}
-          onFocus={() => setActivePaneIndex(maximizedPaneIndex)}
-          onClose={() => s && handleCloseSession(s.id)}
-          onMaximize={() => setMaximizedPaneIndex(null)}
-          onSplit={() => handleCreateSession()}
-          theme={theme}
-          onToast={showToast}
-        />
-      );
+      return renderPane(maximizedPaneIndex);
     }
 
     switch (layoutMode) {
       case 1:
         return (
           <div className="flex-1 flex w-full h-full min-h-0 min-w-0">
-            <TerminalPane
-              session={getSessionForSlot(0)}
-              isActive={activePaneIndex === 0}
-              isMaximized={false}
-              onFocus={() => setActivePaneIndex(0)}
-              onClose={() => {
-                const s = getSessionForSlot(0);
-                if (s) handleCloseSession(s.id);
-              }}
-              onMaximize={() => setMaximizedPaneIndex(0)}
-              onSplit={() => setLayoutMode(2)}
-              theme={theme}
-              onToast={showToast}
-            />
+            {renderPane(0)}
           </div>
         );
 
       case 2:
         return (
           <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0">
-            {[0, 1].map((idx) => (
-              <TerminalPane
-                key={idx}
-                session={getSessionForSlot(idx)}
-                isActive={activePaneIndex === idx}
-                isMaximized={false}
-                onFocus={() => setActivePaneIndex(idx)}
-                onClose={() => {
-                  const s = getSessionForSlot(idx);
-                  if (s) handleCloseSession(s.id);
-                }}
-                onMaximize={() => setMaximizedPaneIndex(idx)}
-                onSplit={() => handleCreateSession()}
-                theme={theme}
-                onToast={showToast}
-              />
-            ))}
+            {[0, 1].map(renderPane)}
           </div>
         );
 
@@ -391,39 +407,10 @@ export const App: React.FC = () => {
         return (
           <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0">
             <div className="flex-1 flex min-w-0 min-h-0">
-              <TerminalPane
-                session={getSessionForSlot(0)}
-                isActive={activePaneIndex === 0}
-                isMaximized={false}
-                onFocus={() => setActivePaneIndex(0)}
-                onClose={() => {
-                  const s = getSessionForSlot(0);
-                  if (s) handleCloseSession(s.id);
-                }}
-                onMaximize={() => setMaximizedPaneIndex(0)}
-                onSplit={() => handleCreateSession()}
-                theme={theme}
-                onToast={showToast}
-              />
+              {renderPane(0)}
             </div>
             <div className="flex-1 flex flex-col gap-2 min-w-0 min-h-0">
-              {[1, 2].map((idx) => (
-                <TerminalPane
-                  key={idx}
-                  session={getSessionForSlot(idx)}
-                  isActive={activePaneIndex === idx}
-                  isMaximized={false}
-                  onFocus={() => setActivePaneIndex(idx)}
-                  onClose={() => {
-                    const s = getSessionForSlot(idx);
-                    if (s) handleCloseSession(s.id);
-                  }}
-                  onMaximize={() => setMaximizedPaneIndex(idx)}
-                  onSplit={() => handleCreateSession()}
-                  theme={theme}
-                  onToast={showToast}
-                />
-              ))}
+              {[1, 2].map(renderPane)}
             </div>
           </div>
         );
@@ -432,23 +419,7 @@ export const App: React.FC = () => {
         // 2x2 Grid
         return (
           <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 w-full h-full min-h-0 min-w-0">
-            {[0, 1, 2, 3].map((idx) => (
-              <TerminalPane
-                key={idx}
-                session={getSessionForSlot(idx)}
-                isActive={activePaneIndex === idx}
-                isMaximized={false}
-                onFocus={() => setActivePaneIndex(idx)}
-                onClose={() => {
-                  const s = getSessionForSlot(idx);
-                  if (s) handleCloseSession(s.id);
-                }}
-                onMaximize={() => setMaximizedPaneIndex(idx)}
-                onSplit={() => handleCreateSession()}
-                theme={theme}
-                onToast={showToast}
-              />
-            ))}
+            {[0, 1, 2, 3].map(renderPane)}
           </div>
         );
 
@@ -457,42 +428,10 @@ export const App: React.FC = () => {
         return (
           <div className="flex-1 flex flex-col gap-2 w-full h-full min-h-0 min-w-0">
             <div className="flex-1 flex gap-2 min-h-0 min-w-0">
-              {[0, 1].map((idx) => (
-                <TerminalPane
-                  key={idx}
-                  session={getSessionForSlot(idx)}
-                  isActive={activePaneIndex === idx}
-                  isMaximized={false}
-                  onFocus={() => setActivePaneIndex(idx)}
-                  onClose={() => {
-                    const s = getSessionForSlot(idx);
-                    if (s) handleCloseSession(s.id);
-                  }}
-                  onMaximize={() => setMaximizedPaneIndex(idx)}
-                  onSplit={() => handleCreateSession()}
-                  theme={theme}
-                  onToast={showToast}
-                />
-              ))}
+              {[0, 1].map(renderPane)}
             </div>
             <div className="flex-1 flex gap-2 min-h-0 min-w-0">
-              {[2, 3, 4].map((idx) => (
-                <TerminalPane
-                  key={idx}
-                  session={getSessionForSlot(idx)}
-                  isActive={activePaneIndex === idx}
-                  isMaximized={false}
-                  onFocus={() => setActivePaneIndex(idx)}
-                  onClose={() => {
-                    const s = getSessionForSlot(idx);
-                    if (s) handleCloseSession(s.id);
-                  }}
-                  onMaximize={() => setMaximizedPaneIndex(idx)}
-                  onSplit={() => handleCreateSession()}
-                  theme={theme}
-                  onToast={showToast}
-                />
-              ))}
+              {[2, 3, 4].map(renderPane)}
             </div>
           </div>
         );
@@ -501,23 +440,7 @@ export const App: React.FC = () => {
         // 2 rows of 3 columns (2x3 Grid)
         return (
           <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-2 w-full h-full min-h-0 min-w-0">
-            {[0, 1, 2, 3, 4, 5].map((idx) => (
-              <TerminalPane
-                key={idx}
-                session={getSessionForSlot(idx)}
-                isActive={activePaneIndex === idx}
-                isMaximized={false}
-                onFocus={() => setActivePaneIndex(idx)}
-                onClose={() => {
-                  const s = getSessionForSlot(idx);
-                  if (s) handleCloseSession(s.id);
-                }}
-                onMaximize={() => setMaximizedPaneIndex(idx)}
-                onSplit={() => handleCreateSession()}
-                theme={theme}
-                onToast={showToast}
-              />
-            ))}
+            {[0, 1, 2, 3, 4, 5].map(renderPane)}
           </div>
         );
     }
@@ -568,7 +491,7 @@ export const App: React.FC = () => {
         {/* Top Bar with 1-6 layout switcher */}
         <TopBar
           layoutMode={layoutMode}
-          onChangeLayout={setLayoutMode}
+          onChangeLayout={handleSetLayoutMode}
           systemInfo={systemInfo}
           onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
           onOpenQuickScripts={() => setIsQuickScriptsOpen(true)}

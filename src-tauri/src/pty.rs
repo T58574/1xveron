@@ -106,9 +106,14 @@ impl PtyInstance {
             #[cfg(target_os = "windows")]
             {
                 // Terminate process tree on Windows to ensure child processes (node, python, etc.) don't become zombies
-                let _ = std::process::Command::new("taskkill")
-                    .args(["/PID", &pid.to_string(), "/T", "/F"])
-                    .spawn();
+                let mut cmd = std::process::Command::new("taskkill");
+                cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
+                cmd.creation_flags(CREATE_NO_WINDOW);
+                if let Ok(mut child) = cmd.spawn() {
+                    let _ = child.wait();
+                }
             }
         }
         let _ = self.child.kill();
