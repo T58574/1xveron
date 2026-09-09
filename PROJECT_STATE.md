@@ -1,102 +1,141 @@
 # Veron — Project State & Architectural Memory 🧠
 
-> **Документ памяти проекта Veron**. Содержит полный контекст архитектуры, историю исправлений, спецификацию протоколов и дорожную карту для будущих сессий.
+> **Документ долгосрочной памяти проекта Veron**. Содержит полный контекст архитектуры, историю решений, протоколы взаимодействия, известные подводные камни и дорожную карту для будущих сессий и AI-агентов.
 
 ---
 
-## 1. Концепция и цели проекта
+## 1. Карточка проекта
 
-- **Название**: Veron (быстрый, модульный терминальный мультиплексор под Windows).
-- **Стек ядра**: Rust (1.97+), `portable-pty` (Windows ConPTY), `tokio` (runtime), `axum` (HTTP & WebSocket server), `tower-http`.
-- **Стек интерфейса**: React 18, TypeScript, Tailwind CSS, `@xterm/xterm` (v5.5 с fit & webgl addons), Lucide/Material vector icons.
-- **Дизайн**: Вдохновлен **BridgeMind** и **Warp.dev** — модульные карточки со скруглениями (`rounded-xl`), мягкими границами, независимыми заголовками окон, палитра Dark (матовый графит `#121316` / `#16171d`, не OLED) и Light. Никаких цветных эмодзи.
-- **Ключевые фичи**:
-  1. Сетка из **1 \ 2 \ 3 \ 4 \ 5 \ 6 окон** с гарантированным сохранением слотов (**Slot-to-Session Persistence**).
-  2. Левый сайдбар управления воркспейсами и инстансами с индикацией скриншотов и очисткой.
-  3. Киллер-фича: перехват картинок из буфера (`Ctrl+V` / Drag-and-Drop) -> сохранение в `.veron/captures/` -> автоподстановка пути в строку ввода терминала.
-  4. Мобильный «Диванный режим» (Local Wi-Fi Remote): доступ со смартфона по `http://192.168.x.x:4567?token=...` (QR-код на десктопе), 1 полноэкранный терминал, верхний переключатель сессий и нижний тулбар быстрых клавиш (`[ESC]`, `[TAB]`, `[CTRL+C]`, `[CTRL+Z]`, `[↑]`, `[↓]`, `[Clear]`).
-  5. **Безопасность в локальной сети**: автоматическая генерация 8-значного Auth PIN / Token при старте, блокировка неавторизованных запросов (HTTP 401).
+- **Продукт**: `Veron` — сверхбыстрый, модульный десктопный терминальный мультиплексор для Windows.
+- **Архитектура**:
+  - **Desktop Native**: `tao 0.37` (Windowing & Event Loop) + `wry 0.57` (WebView2).
+  - **Backend Core**: `portable-pty 0.8` (ConPTY), `tokio 1.40`, `axum 0.7`, `tower-http 0.6`, `rust-embed 8.12`.
+  - **Frontend UI**: React 18, TypeScript, Tailwind CSS, `@xterm/xterm 5.5` (WebGL + Fit addons), Lucide icons.
+  - **Портативность**: Единый автономный бинарник `veron.exe` (3.7 МБ) со вшитыми фронтенд-ассетами.
+- **Дизайн**: **Cybran Yellow & Black** (`#090a0d` обсидиан + `#f59e0b` янтарное золото). Строгая инженерная эстетика уровня Apple/BridgeMind/Warp без визуального шума.
+- **Репозиторий**: Ветка `main` в `C:\Users\user\Documents\dev\veron`.
 
 ---
 
-## 2. Архитектура системы и потоки данных
+## 2. Архитектура системы
 
 ```
-  ┌─────────────────────────────────────────────────────────────┐
-  │                        RUST CORE                            │
-  │                                                             │
-  │  [Shell Processes]                                          │
-  │  powershell.exe / cmd.exe / wsl.exe / bash.exe              │
-  │        ▲                                                    │
-  │        │ (ConPTY pipes: stdin / stdout / resize)            │
-  │        ▼                                                    │
-  │  [PtyInstance] (src/pty.rs)                                 │
-  │  Master / Slave PTY pair via `portable-pty`                 │
-  │  Background thread: continuous stdout reader                │
-  │  Kill: `taskkill /PID <pid> /T /F` (защита от зомби)        │
-  │        ▲                                                    │
-  │        │                                                    │
-  │  [SessionManager] (src/session.rs)                          │
-  │  ├── sessions: HashMap<id, Arc<Session>>                    │
-  │  ├── history: Arc<Mutex<Vec<u8>>> (512KB scrollback buffer) │
-  │  ├── output_tx: broadcast::Sender<Vec<u8>>                  │
-  │  ├── captures_dir: .veron/captures/                         │
-  │  └── get_captures_info() / clear_captures()                 │
-  │        ▲                                                    │
-  │        │                                                    │
-  │  [Axum HTTP & WS Server] (src/server.rs : 4567)             │
-  │  ├── Auth: Token validation (query / Bearer header)         │
-  │  ├── GET  /api/system      -> IP, shells, token, hostname   │
-  │  ├── POST /api/auth/verify -> validate token                │
-  │  ├── GET  /api/sessions    -> list active sessions (Auth)   │
-  │  ├── POST /api/sessions    -> spawn new shell (Auth)        │
-  │  ├── DEL  /api/sessions/:id-> kill session process tree     │
-  │  ├── POST /api/upload      -> save base64 image & paste     │
-  │  ├── GET/DEL /api/captures -> info and clear screenshots    │
-  │  ├── WS   /ws/terminal/:id -> binary & control JSON stream  │
-  │  └── fallback -> ServeDir("./dist") (Frontend SPA)          │
-  └────────┬────────────────────────────────────┬───────────────┘
-           │ (WebSocket / HTTP)                 │ (LAN Wi-Fi)
-           ▼                                    ▼
-  ┌─────────────────────────┐          ┌─────────────────────────┐
-  │   Desktop Client (PC)   │          │  Mobile Phone (Remote)  │
-  │  - Grid Layout (1-6)    │          │  - Single Fullscreen    │
-  │  - Slot Persistence     │          │  - Top Session Switcher │
-  │  - Card Panes           │          │  - Dev Touch Toolbar    │
-  │  - Captures widget      │          │  - PIN Auth Modal       │
-  │  - Auto-token auth      │          │  - VisualViewport adapt │
-  └─────────────────────────┘          └─────────────────────────┘
+                             ┌───────────────────────────────────┐
+                             │       NATIVE WINDOW (Tao + Wry)   │
+                             │  WebView2 (1366x820)             │
+                             │  URL: localhost:4567?token=...    │
+                             └─────────────────┬─────────────────┘
+                                               │ (HTTP / WS)
+                                               ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           RUST CORE (veron.exe)                                 │
+│                                                                                 │
+│  [Main Thread]                                                                  │
+│  ├── EventLoop (Tao): WindowEvent::CloseRequested -> session_manager.close_all() │
+│  └── Arc<SessionManager>                                                        │
+│                                                                                 │
+│  [Background Tokio Runtime]                                                     │
+│  ├── SessionManager (src/session.rs)                                            │
+│  │   ├── sessions: Arc<RwLock<HashMap<id, Arc<Session>>>>                       │
+│  │   ├── history: Arc<Mutex<Vec<u8>>> (512KB кольцевой буфер на сессию)         │
+│  │   ├── captures_dir: .veron/captures/                                         │
+│  │   ├── close_all() -> taskkill /PID <pid> /T /F (Zero Zombies Guarantee)      │
+│  │   └── rename_session(id, name)                                               │
+│  │                                                                              │
+│  ├── ConPTY Engine (src/pty.rs)                                                 │
+│  │   └── portable-pty (powershell.exe -NoLogo, cmd.exe, wsl.exe, bash.exe)       │
+│  │                                                                              │
+│  └── Axum HTTP/WS Server (src/server.rs : 4567)                                 │
+│      ├── Security: Token Guard (Bearer / ?token= / X-Veron-Token)               │
+│      ├── Static Assets: rust-embed (embedded dist/) + disk fallback             │
+│      ├── Terminal WS: /ws/terminal/:id (стриминг ввода/вывода)                  │
+│      └── Endpoints: /api/system, /api/sessions, /api/upload, /api/captures      │
+└───────────────────────┬───────────────────────────────────┬─────────────────────┘
+                        │                                   │ (Wi-Fi 0.0.0.0:4567)
+                        ▼                                   ▼
+          ┌───────────────────────────┐       ┌───────────────────────────┐
+          │     Desktop UI (React)    │       │   Mobile Couch Mode       │
+          │ - 1..6 Grid + Persistence │       │ - Fullscreen (No splits)  │
+          │ - Command Palette (Ctrl+K)│       │ - Touch Developer Toolbar │
+          │ - Captures / Explorer     │       │ - Session Switcher Dropdown│
+          │ - Session Rename (DblClick│       │ - VisualViewport Auto-Fit │
+          └───────────────────────────┘       └───────────────────────────┘
 ```
 
 ---
 
-## 3. Выполненные исправления аудита (Changelog)
+## 3. Спецификация REST & WebSocket API
 
-| Проблема из аудита | Реализованное исправление |
-|--------------------|---------------------------|
-| **1. Уязвимость открытой локальной сети (0.0.0.0)** | Внедрен динамический Auth PIN / Token (`auth_token`). Запросы без валидного токена отсекаются с кодом `401 Unauthorized`. В QR-код токен зашит в URL (`?token=...`), а десктопный клиент получает его автоматически. Для мобилки без токена доступно окно ввода PIN. |
-| **2. Процессы-зомби на Windows (Orphaned Processes)** | В `src-tauri/src/pty.rs` в метод `kill()` встроено завершение дерева процессов через `taskkill /PID <pid> /T /F`. При закрытии окна терминала все дочерние сервера (Node.js, Python, и т.д.) гарантированно удаляются из памяти. |
-| **3. Кракозябры и лишний шум PowerShell** | В `src-tauri/src/pty.rs` PowerShell запускается с флагом `-NoLogo` (чистый моментальный запуск) и переменными `PYTHONIOENCODING=utf-8`, `TERM=xterm-256color`, `COLORTERM=truecolor`. |
-| **4. Скачущие окна при закрытии (Slot Persistence)** | В `src/App.tsx` введена модель 6 фиксированных слотов `slots: (string \| null)[]`. При закрытии сессии слот становится пустым ("Empty Pane"), а соседние окна остаются строго на своих позициях. Клик по сессии в сайдбаре переносит ее в выбранный слот. |
-| **5. Переполнение папки скриншотов** | В `SessionManager` и `server.rs` добавлены эндпоинты `GET /api/captures` и `DELETE /api/captures`. В сайдбар добавлен виджет с объемом скриншотов и кнопкой быстрой очистки в 1 клик. |
+Все приватные endpoints защищены токеном авторизации (`?token=...` или заголовок `Authorization: Bearer <token>`):
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `GET` | `/api/system` | Информация о системе: локальный IP, shells, QR/LAN URL, токен |
+| `POST` | `/api/auth/verify` | Валидация введенного PIN-кода на клиенте |
+| `GET` | `/api/sessions` | Список всех активных терминальных сессий |
+| `POST` | `/api/sessions` | Создание новой сессии (`shell`, `cwd`, `name`, `workspace_id`) |
+| `DELETE` | `/api/sessions/:id` | Завершение сессии со сносом дерева процессов (`taskkill /T /F`) |
+| `PATCH` | `/api/sessions/:id` | Переименование сессии (`{ "name": "..." }`) |
+| `POST` | `/api/sessions/:id/resize` | Изменение геометрии PTY (`{ "rows": N, "cols": N }`) |
+| `POST` | `/api/sessions/:id/input` | Отправка команды в терминал через REST (`{ "data": "..." }`) |
+| `POST` | `/api/upload` | Сохранение base64-картинки в `.veron/captures` + вставка пути в stdin |
+| `GET` | `/api/captures` | Метаданные скриншотов (кол-во файлов, размер на диске) |
+| `DELETE` | `/api/captures` | Полная очистка папки `.veron/captures` |
+| `POST` | `/api/captures/open` | Мгновенное открытие папки со скриншотами в Проводнике Windows |
+| `GET` | `/api/workspaces` | Список рабочих пространств |
+| `GET` | `/ws/terminal/:id` | WebSocket терминала (двусторонний бинарный и текстовый обмен) |
+| `*` | `/*` (fallback) | Отдача статики React: сначала диск (`./dist`), затем `rust-embed` |
 
 ---
 
-## 4. Повторный аудит системы (Fresh Post-Fix Audit)
+## 4. История ключевых архитектурных вех (Changelog)
 
-По итогам проверки всех 5 исправлений:
-1. **Безопасность**: попытки несанкционированного доступа к `/api/sessions` и `/ws/terminal/*` возвращают `401 Unauthorized`. Локальный компьютер и авторизованный телефон с QR-кода работают без трения.
-2. **Стабильность процессов**: закрытие терминалов не оставляет висящих дочерних процессов в Windows Task Manager.
-3. **UX раскладки**: сетки от 1 до 6 окон стабильны, окна не меняются местами самопроизвольно.
-4. **Компиляция**: чистый билд как в `debug`, так и в `release` (`0 errors, 0 warnings`).
+### Milestone 1 (`ee8c008`): Нативное окно Tao + Wry
+- Добавлены зависимости `wry 0.57` и `tao 0.37`.
+- Сервер Axum и ConPTY вынесены в фоновый поток Tokio.
+- На главном потоке создано нативное десктопное окно Windows с WebView2.
+- Добавлен флаг `--server-only` для возможности запуска в headless-режиме.
+
+### Milestone 2 (`63dbdf9`): Палитра быстрых скриптов (`Ctrl+K`) и Проводник
+- Создан компонент `QuickScriptsModal.tsx` с пресетами системных, git и dev-команд.
+- Добавлена поддержка кастомных скриптов в `localStorage`.
+- Добавлен endpoint `/api/captures/open` с вызовом `explorer.exe` из Rust.
+- Добавлен REST input endpoint `/api/sessions/:id/input`.
+
+### Milestone 3 (`9d7d3a3`, `78023b8`): Гарантия чистого завершения процессов (Zero Zombies)
+- В `pty.rs` метод `kill()` переписан: синхронный `taskkill /PID <pid> /T /F` с флагом `CREATE_NO_WINDOW` и `child.wait()`.
+- В `SessionManager` добавлен метод `close_all()` и `impl Drop`.
+- В `main.rs` перехват события `WindowEvent::CloseRequested` (крестик) и `Ctrl+C` теперь принудительно зачищает все деревья процессов.
+- Исправлен контекст создания сессии внутри Tokio runtime reactor.
+
+### Milestone 4 (`7e41fc7`, `bae6c98`, `73a6207`): Полная портативность через `rust-embed`
+- Все фронтенд-ассеты вшиты в релизный бинарник `veron.exe` (3.7 МБ).
+- Бинарник скопирован в корень проекта для запуска в 1 клик.
+- Настроен `.gitignore` для исключения бинарников из системы контроля версий.
 
 ---
 
-## 5. Дорожная карта на будущие сессии
+## 5. Инварианты и правила для будущих сессий
 
-1. **Фаза 2 (Нативное окно Tauri / WebView2)**:
-   - Добавление `tauri.conf.json` для упаковки в единый `.exe` инсталлятор / портабельный бинарник.
-   - Сворачивание в системный трей (System Tray) с горячей клавишей вызова (например, `Ctrl+\``).
-2. **Фаза 3 (Интеграция с ИИ и Quick Actions)**:
-   - Настраиваемая панель быстрых скриптов (`git status`, `cargo test`, `npm run dev`).
-   - Кнопка «Отправить скриншот ассистенту» с прямой передачей контекста.
+1. **PowerShell-синтаксис в Windows**:
+   - Никогда не использовать `&&` для цепочки команд в PowerShell! Использовать строго `;` (например: `npm run build; cargo check`).
+2. **Встраивание ассетов (`rust-embed`)**:
+   - При сборке релиза `cargo build --release` **сначала ОБЯЗАТЕЛЬНО** должен быть запущен `npm run build`, чтобы в папке `dist/` лежали свежие файлы фронтенда.
+3. **Безопасность ConPTY**:
+   - Никогда не убивать процессы через обычный `child.kill()`, так как дочерние сервера (Node, Vite, Python) остаются в памяти. Только через `PtyInstance::kill()`, вызывающий `taskkill /T /F`.
+4. **Запрет на `ArtifactMetadata` в файлах проекта**:
+   - При создании файлов в проекте через `write_to_file` параметр `ArtifactMetadata` передавать ЗАПРЕЩЕНО (он только для brain-артефактов).
+5. **Дизайн-код**:
+   - Строгая палитра Cybran Yellow & Black (`#090a0d` / `#f59e0b`). Нулевая терпимость к неоновому AI-слопу, мигающим радужным кружкам и нерелевантным плашкам.
+
+---
+
+## 6. Дорожная карта на будущее (Next Milestones)
+
+1. **Глобальные хоткеи навигации**:
+   - `Alt+1..6` — быстрый фокус квадранта сетки без мыши.
+   - `Ctrl+Shift+T` — моментальный сплит текущей панели.
+2. **Доски рабочих пространств (Dashboard Workspaces)**:
+   - При переключении воркспейса в боковом меню открывать сохраненную для него раскладку окон (например, воркспейс "Frontend" помнит 2 сплита, а "Backend" — 4 сплита).
+3. **Visual Bell / Уведомления об окончании фоновых задач**:
+   - Мягкий янтарный импульс на границе терминала при успешном завершении длительной сборки (код 0) или красный импульс при ошибке.

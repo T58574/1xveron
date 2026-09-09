@@ -9,6 +9,8 @@ src-tauri/target/
 target/
 **/*.rs.bk
 *.exe
+*.WebView2/
+
 
 # CodeGuardian & Local Analysis
 .codeguardian/
