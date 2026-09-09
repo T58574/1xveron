@@ -8,28 +8,35 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Deep modern dark zinc/slate (Non-OLED)
+        // Cybran / Cicada Precision Palette (Matte Obsidian + Amber/Gold)
         veron: {
-          bg: '#121316',
-          sidebar: '#16171c',
-          card: '#1a1c23',
-          cardHeader: '#1e212b',
-          border: '#2a2d3d',
-          hover: '#252836',
-          active: '#2f3447',
-          accent: '#38bdf8',
-          accentGlow: 'rgba(56, 189, 248, 0.15)',
-          text: '#f1f5f9',
-          muted: '#94a3b8',
+          bg: '#090a0d',
+          sidebar: '#0d0e12',
+          card: '#12141a',
+          cardHeader: '#161820',
+          border: 'rgba(255, 255, 255, 0.08)',
+          borderSubtle: 'rgba(255, 255, 255, 0.04)',
+          borderHover: 'rgba(245, 158, 11, 0.35)',
+          hover: 'rgba(255, 255, 255, 0.04)',
+          active: 'rgba(245, 158, 11, 0.08)',
+          accent: '#f59e0b',       // Cicada Amber
+          accentHover: '#fbbf24',  // Electric Gold
+          accentMuted: 'rgba(245, 158, 11, 0.15)',
+          text: '#f4f4f5',
+          muted: '#71717a',
         }
       },
       fontFamily: {
-        mono: ['"Cascadia Code"', '"JetBrains Mono"', '"Fira Code"', 'Consolas', 'monospace'],
+        mono: ['"Cascadia Code"', '"JetBrains Mono"', 'Consolas', 'monospace'],
         sans: ['"Inter"', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
       },
       boxShadow: {
-        'card': '0 4px 20px -2px rgba(0, 0, 0, 0.35)',
-        'pane-active': '0 0 0 1.5px rgba(56, 189, 248, 0.5), 0 8px 30px rgba(0, 0, 0, 0.4)',
+        'card': '0 4px 20px -2px rgba(0, 0, 0, 0.6)',
+        'pane-active': '0 0 0 1px rgba(245, 158, 11, 0.6), 0 8px 30px rgba(0, 0, 0, 0.6)',
+        'amber-glow': '0 0 16px -2px rgba(245, 158, 11, 0.25)',
+      },
+      transitionTimingFunction: {
+        'apple': 'cubic-bezier(0.16, 1, 0.3, 1)',
       }
     },
   },

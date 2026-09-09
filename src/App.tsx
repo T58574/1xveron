@@ -9,6 +9,7 @@ import {
   createSession,
   closeSession,
   getAuthToken,
+  setAuthToken,
   verifyToken,
 } from './services/api';
 import { Sidebar } from './components/Sidebar';
@@ -76,6 +77,9 @@ export const App: React.FC = () => {
         if (sys) {
           setSystemInfo(sys);
           setIsAuthenticated(true);
+          if (sys.auth_token) {
+            setAuthToken(sys.auth_token);
+          }
         }
 
         const [sess, ws, caps] = await Promise.all([
@@ -93,18 +97,19 @@ export const App: React.FC = () => {
         if (caps) setCapturesInfo(caps);
         if (sess && sess.length > 0) {
           setSessions(sess);
-          // Populate empty slots with active sessions without shifting existing slots
           setSlots((prev) => {
             const next = [...prev];
             let sIdx = 0;
             for (let i = 0; i < 6; i++) {
               if (!next[i] && sIdx < sess.length) {
-                // If this session is not already in any slot
                 if (!next.includes(sess[sIdx].id)) {
                   next[i] = sess[sIdx].id;
                 }
                 sIdx++;
               }
+            }
+            if (!next[0] && sess.length > 0) {
+              next[0] = sess[0].id;
             }
             return next;
           });
@@ -119,11 +124,21 @@ export const App: React.FC = () => {
     const interval = setInterval(async () => {
       try {
         const sess = await fetchSessions();
-        setSessions(sess);
+        if (sess && sess.length > 0) {
+          setSessions(sess);
+          setSlots((prev) => {
+            if (!prev[0] && sess.length > 0) {
+              const next = [...prev];
+              next[0] = sess[0].id;
+              return next;
+            }
+            return prev;
+          });
+        }
         const caps = await fetchCapturesInfo();
         setCapturesInfo(caps);
       } catch {}
-    }, 4000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, []);

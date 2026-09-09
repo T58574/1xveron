@@ -6,64 +6,62 @@
 
 @layer base {
   :root {
-    --veron-bg: #121316;
-    --veron-sidebar: #16171c;
-    --veron-card: #1a1c23;
-    --veron-card-header: #1e212b;
-    --veron-border: #2a2d3d;
-    --veron-text: #f1f5f9;
-    --veron-text-muted: #94a3b8;
-    --veron-accent: #38bdf8;
+    --veron-bg: #090a0d;
+    --veron-sidebar: #0d0e12;
+    --veron-card: #12141a;
+    --veron-card-header: #161820;
+    --veron-border: rgba(255, 255, 255, 0.08);
+    --veron-text: #f4f4f5;
+    --veron-text-muted: #71717a;
+    --veron-accent: #f59e0b;
   }
 
   .light {
-    --veron-bg: #f8fafc;
-    --veron-sidebar: #f1f5f9;
+    --veron-bg: #f8f9fa;
+    --veron-sidebar: #f1f2f4;
     --veron-card: #ffffff;
-    --veron-card-header: #f8fafc;
-    --veron-border: #e2e8f0;
-    --veron-text: #0f172a;
+    --veron-card-header: #f8f9fa;
+    --veron-border: rgba(0, 0, 0, 0.09);
+    --veron-text: #09090b;
     --veron-text-muted: #64748b;
-    --veron-accent: #0284c7;
+    --veron-accent: #d97706;
   }
 
   body {
     background-color: var(--veron-bg);
     color: var(--veron-text);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
-/* Custom sleek scrollbar */
+/* Apple-style minimalist scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
+  background: rgba(245, 158, 11, 0.4);
 }
 
-/* Xterm customizations */
+/* Xterm overrides */
 .xterm {
-  padding: 8px 12px;
+  padding: 10px 14px;
   height: 100%;
 }
 .xterm .xterm-viewport {
   overflow-y: auto !important;
 }
 
-/* Glowing pulse for active session */
-@keyframes pulse-glow {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(1.1); }
-}
-.active-pulse {
-  animation: pulse-glow 2s infinite ease-in-out;
+/* Interactive transitions */
+.smooth-hover {
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
