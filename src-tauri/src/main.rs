@@ -29,19 +29,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create session manager on main thread to ensure clean lifecycle management
     let session_manager = Arc::new(SessionManager::new());
-    let initial_cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "C:\\".to_string());
-
-    let _ = session_manager.create_session(
-        None,
-        Some(initial_cwd),
-        Some("PowerShell 1".into()),
-        Some("default".into()),
-        24,
-        80,
-    );
-
     let session_manager_for_server = session_manager.clone();
     let session_manager_for_events = session_manager.clone();
     let session_manager_for_sig = session_manager.clone();
@@ -50,6 +37,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
         rt.block_on(async move {
+            let initial_cwd = std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "C:\\".to_string());
+
+            let _ = session_manager_for_server.create_session(
+                None,
+                Some(initial_cwd),
+                Some("PowerShell 1".into()),
+                Some("default".into()),
+                24,
+                80,
+            );
+
             let state = AppState {
                 manager: session_manager_for_server,
                 port,
