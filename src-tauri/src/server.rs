@@ -15,8 +15,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::services::ServeDir;
 use tracing::info;
+use rust_embed::RustEmbed;
+
+#[derive(RustEmbed)]
+#[folder = "../dist"]
+struct FrontendAssets;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -125,14 +129,6 @@ pub fn create_router(state: AppState) -> Router {
         .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::PATCH, Method::OPTIONS])
         .allow_headers(Any);
 
-    let dist_dir = if std::path::Path::new("./dist").exists() {
-        std::path::PathBuf::from("./dist")
-    } else if std::path::Path::new("../dist").exists() {
-        std::path::PathBuf::from("../dist")
-    } else {
-        std::path::PathBuf::from("./dist")
-    };
-
     Router::new()
         .route("/api/system", get(get_system_info))
         .route("/api/auth/verify", post(verify_token))
@@ -145,9 +141,51 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/captures/open", post(open_captures_folder))
         .route("/api/workspaces", get(list_workspaces))
         .route("/ws/terminal/:id", get(ws_terminal_handler))
-        .fallback_service(ServeDir::new(dist_dir))
+        .fallback(static_file_handler)
         .layer(cors)
         .with_state(state)
+}
+
+async fn static_file_handler(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
+    let raw_path = uri.path().trim_start_matches('/');
+    let rel_path = if raw_path.is_empty() { "index.html" } else { raw_path };
+
+    // 1. Try disk if dist/ exists
+    let disk_paths = [
+        std::path::PathBuf::from("./dist").join(rel_path),
+        std::path::PathBuf::from("../dist").join(rel_path),
+    ];
+    for p in &disk_paths {
+        if p.exists() && p.is_file() {
+            if let Ok(data) = std::fs::read(p) {
+                let mime = mime_guess::from_path(rel_path).first_or_octet_stream();
+                return ([(axum::http::header::CONTENT_TYPE, mime.as_ref())], data).into_response();
+            }
+        }
+    }
+
+    // 2. Embedded assets fallback (pure portable executable support)
+    match FrontendAssets::get(rel_path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(rel_path).first_or_octet_stream();
+            ([(axum::http::header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
+        }
+        None => {
+            // 3. SPA fallback to index.html
+            for p in &[std::path::PathBuf::from("./dist/index.html"), std::path::PathBuf::from("../dist/index.html")] {
+                if p.exists() && p.is_file() {
+                    if let Ok(data) = std::fs::read(p) {
+                        return ([(axum::http::header::CONTENT_TYPE, "text/html")], data).into_response();
+                    }
+                }
+            }
+            if let Some(content) = FrontendAssets::get("index.html") {
+                ([(axum::http::header::CONTENT_TYPE, "text/html")], content.data).into_response()
+            } else {
+                (StatusCode::NOT_FOUND, "Frontend assets not found").into_response()
+            }
+        }
+    }
 }
 
 async fn verify_token(
