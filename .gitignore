@@ -8,6 +8,7 @@ dist-ssr/
 src-tauri/target/
 target/
 **/*.rs.bk
+*.exe
 
 # CodeGuardian & Local Analysis
 .codeguardian/
