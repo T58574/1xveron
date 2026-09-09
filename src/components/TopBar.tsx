@@ -11,6 +11,7 @@ import {
   Moon,
   ChevronDown,
   Terminal as TermIcon,
+  Sparkles,
 } from 'lucide-react';
 import { LayoutMode, ShellOption, SystemInfo } from '../types';
 
@@ -19,6 +20,7 @@ interface TopBarProps {
   onChangeLayout: (mode: LayoutMode) => void;
   systemInfo: SystemInfo | null;
   onOpenRemoteModal: () => void;
+  onOpenQuickScripts: () => void;
   onCreateSession: (shell?: string) => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
@@ -29,6 +31,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onChangeLayout,
   systemInfo,
   onOpenRemoteModal,
+  onOpenQuickScripts,
   onCreateSession,
   theme,
   onToggleTheme,
@@ -112,6 +115,19 @@ export const TopBar: React.FC<TopBarProps> = ({
             </div>
           )}
         </div>
+
+        {/* Quick Scripts / Command Palette Button */}
+        <button
+          onClick={onOpenQuickScripts}
+          title="Quick Scripts & Commands (Ctrl+K)"
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.04] hover:bg-white/[0.08] hover:text-amber-400 text-zinc-300 rounded-md text-xs font-medium transition-all duration-150 border border-white/[0.06]"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <span className="hidden sm:inline">Scripts</span>
+          <span className="hidden md:inline-block px-1.5 py-0.2 text-[10px] font-mono text-zinc-400 bg-black/40 rounded border border-white/[0.08]">
+            Ctrl+K
+          </span>
+        </button>
 
         {/* Mobile Remote Button */}
         <button

@@ -6,6 +6,8 @@ import {
   fetchWorkspaces,
   fetchCapturesInfo,
   clearCaptures,
+  openCapturesFolder,
+  sendSessionInput,
   createSession,
   closeSession,
   getAuthToken,
@@ -16,6 +18,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { TerminalPane } from './components/TerminalPane';
 import { RemoteModal } from './components/RemoteModal';
+import { QuickScriptsModal } from './components/QuickScriptsModal';
 import { MobileView } from './components/MobileView';
 import { KeyRound, ShieldAlert } from 'lucide-react';
 
@@ -34,6 +37,7 @@ export const App: React.FC = () => {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRemoteModalOpen, setIsRemoteModalOpen] = useState(false);
+  const [isQuickScriptsOpen, setIsQuickScriptsOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [toast, setToast] = useState<string | null>(null);
 
@@ -51,6 +55,18 @@ export const App: React.FC = () => {
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Global Keyboard Shortcut: Ctrl+K / Cmd+K for Quick Scripts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsQuickScriptsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Theme synchronization
@@ -207,6 +223,15 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleOpenCapturesFolder = async () => {
+    try {
+      await openCapturesFolder();
+      showToast('Opened captures in Windows Explorer');
+    } catch {
+      showToast('Failed to open captures folder');
+    }
+  };
+
   // Helper to get session for a slot index
   const getSessionForSlot = (idx: number): SessionInfo | undefined => {
     const sid = slots[idx];
@@ -214,23 +239,39 @@ export const App: React.FC = () => {
     return sessions.find((s) => s.id === sid);
   };
 
-  // Active session ID is the session in the currently focused active pane
-  const activeSessionId = getSessionForSlot(activePaneIndex)?.id || sessions[0]?.id || null;
+  // Active session and ID in the currently focused active pane
+  const activeSession = getSessionForSlot(activePaneIndex) || sessions[0] || null;
+  const activeSessionId = activeSession?.id || null;
+
+  const handleExecuteScript = async (command: string, autoExecute: boolean = true) => {
+    if (!activeSessionId) {
+      showToast('No active terminal session to execute script');
+      return;
+    }
+    const dataToSend = autoExecute ? `${command}\r` : command;
+    try {
+      await sendSessionInput(activeSessionId, dataToSend);
+      const preview = command.length > 30 ? `${command.slice(0, 30)}...` : command;
+      showToast(`Ran: ${preview}`);
+    } catch {
+      showToast('Failed to send command to terminal');
+    }
+  };
 
   // If unauthenticated (e.g. mobile client connecting over LAN without token)
   if (!isAuthenticated) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#121316] text-white p-4">
+      <div className="flex h-screen w-screen items-center justify-center bg-[#090a0d] text-white p-4">
         <form
           onSubmit={handleAuthSubmit}
-          className="w-full max-w-sm bg-[#1a1c24] border border-zinc-800 rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
+          className="w-full max-w-sm bg-[#0f1015] border border-white/[0.08] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
         >
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-xl bg-sky-950/60 border border-sky-700/50 text-sky-400">
+            <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-400">
               <KeyRound className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-semibold">Veron Authorization</h2>
+              <h2 className="text-base font-semibold text-zinc-100">Veron Authorization</h2>
               <p className="text-xs text-zinc-400">Enter PIN / Auth Token shown on PC</p>
             </div>
           </div>
@@ -247,13 +288,13 @@ export const App: React.FC = () => {
             placeholder="e.g. A3F91B2C"
             value={pinInput}
             onChange={(e) => setPinInput(e.target.value.toUpperCase())}
-            className="w-full bg-[#121316] border border-zinc-700 rounded-lg px-3 py-2 text-center text-lg tracking-widest font-mono uppercase text-sky-400 outline-none focus:border-sky-500"
+            className="w-full bg-[#090a0d] border border-white/[0.1] rounded-lg px-3 py-2 text-center text-lg tracking-widest font-mono uppercase text-amber-400 outline-none focus:border-amber-400 transition-colors"
             autoFocus
           />
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-medium text-sm transition-colors"
+            className="w-full py-2.5 bg-amber-400 hover:bg-amber-300 text-black font-semibold rounded-lg text-sm transition-all duration-150 shadow-sm"
           >
             Connect to Veron
           </button>
@@ -487,7 +528,7 @@ export const App: React.FC = () => {
   return (
     <div
       className={`flex h-screen w-screen overflow-hidden select-none transition-colors ${
-        isDark ? 'bg-[#121316] text-[#f1f5f9]' : 'bg-slate-100 text-slate-900'
+        isDark ? 'bg-[#090a0d] text-[#f1f5f9]' : 'bg-slate-100 text-slate-900'
       }`}
     >
       {/* Left Sidebar (BridgeMind & Warp Session Manager) */}
@@ -498,6 +539,7 @@ export const App: React.FC = () => {
         systemInfo={systemInfo}
         capturesInfo={capturesInfo}
         onClearCaptures={handleClearCaptures}
+        onOpenCapturesFolder={handleOpenCapturesFolder}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         onSelectSession={(id) => {
@@ -529,6 +571,7 @@ export const App: React.FC = () => {
           onChangeLayout={setLayoutMode}
           systemInfo={systemInfo}
           onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
+          onOpenQuickScripts={() => setIsQuickScriptsOpen(true)}
           onCreateSession={handleCreateSession}
           theme={theme}
           onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
@@ -547,9 +590,17 @@ export const App: React.FC = () => {
         systemInfo={systemInfo}
       />
 
+      {/* Quick Scripts / Command Palette Modal */}
+      <QuickScriptsModal
+        isOpen={isQuickScriptsOpen}
+        onClose={() => setIsQuickScriptsOpen(false)}
+        onExecuteScript={handleExecuteScript}
+        activeSessionName={activeSession?.name}
+      />
+
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-lg bg-zinc-900/90 border border-sky-500/50 text-white text-xs shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-2 duration-150">
+        <div className="fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-lg bg-[#0f1015]/95 border border-amber-400/40 text-amber-200 text-xs shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-2 duration-150">
           {toast}
         </div>
       )}

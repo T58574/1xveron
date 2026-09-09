@@ -41,3 +41,12 @@ export interface PaneConfig {
   id: string;
   sessionId: string;
 }
+
+export interface QuickScript {
+  id: string;
+  title: string;
+  command: string;
+  category: 'system' | 'git' | 'dev' | 'custom';
+  description?: string;
+  autoExecute?: boolean;
+}

@@ -185,6 +185,21 @@ impl SessionManager {
         Ok(info)
     }
 
+    pub fn open_captures_in_explorer(&self) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            std::process::Command::new("explorer")
+                .arg(&self.captures_dir)
+                .spawn()
+                .map_err(|e| format!("Failed to launch explorer: {}", e))?;
+            Ok(())
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(())
+        }
+    }
+
     pub fn get_session(&self, id: &str) -> Option<Arc<Session>> {
         self.sessions.read().get(id).cloned()
     }

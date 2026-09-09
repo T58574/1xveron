@@ -170,3 +170,21 @@ export async function clearCaptures(): Promise<number> {
   const data = await res.json();
   return data.deleted || 0;
 }
+
+export async function openCapturesFolder(): Promise<void> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  await fetch(`${API_BASE}/api/captures/open${tokenParam}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+}
+
+export async function sendSessionInput(sessionId: string, data: string): Promise<void> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/input${tokenParam}`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ data }),
+  });
+  if (!res.ok) throw new Error('Failed to send input to session');
+}

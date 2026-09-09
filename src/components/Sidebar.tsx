@@ -14,6 +14,7 @@ import {
   Layers,
   Image,
   Trash2,
+  FolderOpen,
 } from 'lucide-react';
 import { CapturesInfo, SessionInfo, SystemInfo, Workspace } from '../types';
 
@@ -24,6 +25,7 @@ interface SidebarProps {
   systemInfo: SystemInfo | null;
   capturesInfo: CapturesInfo | null;
   onClearCaptures: () => void;
+  onOpenCapturesFolder: () => void;
   isOpen: boolean;
   onToggle: () => void;
   onSelectSession: (id: string) => void;
@@ -41,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   systemInfo,
   capturesInfo,
   onClearCaptures,
+  onOpenCapturesFolder,
   isOpen,
   onToggle,
   onSelectSession,
@@ -271,13 +274,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {capturesInfo.count} capture{capturesInfo.count > 1 ? 's' : ''} ({capturesInfo.size_formatted})
               </span>
             </div>
-            <button
-              onClick={onClearCaptures}
-              title="Clear all screenshots"
-              className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-white/[0.06] transition-colors"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onOpenCapturesFolder}
+                title="Open captures in Windows Explorer"
+                className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] transition-colors"
+              >
+                <FolderOpen className="w-3 h-3" />
+              </button>
+              <button
+                onClick={onClearCaptures}
+                title="Clear all screenshots"
+                className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-white/[0.06] transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
           </div>
         )}
 

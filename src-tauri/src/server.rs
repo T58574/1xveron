@@ -82,6 +82,11 @@ pub struct VerifyTokenPayload {
     pub token: String,
 }
 
+#[derive(Deserialize)]
+pub struct InputPayload {
+    pub data: String,
+}
+
 fn is_authorized(headers: &HeaderMap, query_token: Option<&str>, state: &AppState) -> bool {
     // 1. Check query parameter token
     if let Some(t) = query_token {
@@ -129,8 +134,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/sessions", get(list_sessions).post(create_session))
         .route("/api/sessions/:id", delete(close_session))
         .route("/api/sessions/:id/resize", post(resize_session))
+        .route("/api/sessions/:id/input", post(send_session_input))
         .route("/api/upload", post(upload_screenshot))
         .route("/api/captures", get(get_captures_info).delete(clear_captures))
+        .route("/api/captures/open", post(open_captures_folder))
         .route("/api/workspaces", get(list_workspaces))
         .route("/ws/terminal/:id", get(ws_terminal_handler))
         .fallback_service(ServeDir::new(dist_dir))
@@ -283,6 +290,23 @@ async fn resize_session(
         .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 
+async fn send_session_input(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<InputPayload>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
+    }
+    state
+        .manager
+        .write_input(&id, payload.data.as_bytes())
+        .map(|_| StatusCode::OK)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
 async fn upload_screenshot(
     headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
@@ -333,6 +357,21 @@ async fn clear_captures(
     }
     let deleted = state.manager.clear_captures().unwrap_or(0);
     Ok(Json(serde_json::json!({ "deleted": deleted })))
+}
+
+async fn open_captures_folder(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    state
+        .manager
+        .open_captures_in_explorer()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(serde_json::json!({ "opened": true })))
 }
 
 async fn list_workspaces(
