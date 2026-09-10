@@ -98,6 +98,25 @@ impl SessionManager {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn with_captures_dir(captures_dir: PathBuf) -> Self {
+        let _ = std::fs::create_dir_all(&captures_dir);
+        let default_workspace = Workspace {
+            id: "default".to_string(),
+            name: "veron".to_string(),
+            path: std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "C:\\".to_string()),
+            kind: Some("terminal".to_string()),
+        };
+
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            workspaces: Arc::new(RwLock::new(vec![default_workspace])),
+            captures_dir,
+        }
+    }
+
     pub fn list_workspaces(&self) -> Vec<Workspace> {
         self.workspaces.read().clone()
     }
@@ -435,16 +454,19 @@ impl SessionManager {
         base64_data: &str,
         custom_name: Option<&str>,
         session_id: Option<&str>,
+        paste_to_terminal: bool,
     ) -> Result<SavedCapture, String> {
         let capture = self.save_single_image(base64_data, custom_name, session_id)?;
 
-        if let Some(sid) = session_id {
-            let formatted = if capture.relative_path.contains(' ') {
-                format!("\"{}\"", capture.relative_path)
-            } else {
-                capture.relative_path.clone()
-            };
-            let _ = self.write_input(sid, formatted.as_bytes());
+        if paste_to_terminal {
+            if let Some(sid) = session_id {
+                let formatted = if capture.relative_path.contains(' ') {
+                    format!(" \"{}\" ", capture.relative_path)
+                } else {
+                    format!(" {} ", capture.relative_path)
+                };
+                let _ = self.write_input(sid, formatted.as_bytes());
+            }
         }
 
         Ok(capture)
@@ -474,7 +496,7 @@ impl SessionManager {
                         }
                     })
                     .collect();
-                let joined = paths.join(" ");
+                let joined = format!(" {} ", paths.join(" "));
                 let _ = self.write_input(sid, joined.as_bytes());
             }
         }
@@ -694,6 +716,22 @@ mod tests {
         assert_eq!(sanitize_filename("my architecture (v2).png"), "my_architecture__v2_.png");
         assert_eq!(sanitize_filename("../../../danger.png"), "danger.png");
         assert_eq!(sanitize_filename("___"), "image");
+    }
+
+    #[test]
+    fn test_save_image_without_terminal_paste() {
+        let temp_dir = std::env::temp_dir().join(format!("veron_test_caps_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
+        let sm = SessionManager::with_captures_dir(temp_dir.clone());
+        
+        // 1x1 8-bit PNG in base64
+        let base64_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        
+        // Test with paste_to_terminal = false
+        let cap = sm.save_image_and_paste(base64_png, Some("agy_test.png"), None, false).unwrap();
+        assert!(cap.file_path.ends_with("agy_test.png"));
+        assert!(std::path::Path::new(&cap.file_path).exists());
+        
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 }
 

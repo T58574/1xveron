@@ -18,6 +18,8 @@ interface TerminalPaneProps {
   theme: 'dark' | 'light';
   onToast: (msg: string) => void;
   onCaptureSaved?: () => void;
+  agyMode?: boolean;
+  onToggleAgyMode?: () => void;
 }
 
 export const TerminalPane: React.FC<TerminalPaneProps> = ({
@@ -32,6 +34,8 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   theme,
   onToast,
   onCaptureSaved,
+  agyMode = true,
+  onToggleAgyMode,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -237,13 +241,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         const base64 = e.target?.result as string;
         if (base64) {
           try {
-            onToast('Saving capture...');
-            const res = await uploadScreenshot(base64, session.id);
+            onToast(agyMode ? 'Archiving capture (AGY Mode)...' : 'Saving capture...');
+            const shouldPaste = !agyMode;
+            const res = await uploadScreenshot(base64, session.id, undefined, shouldPaste);
             const relPath = res.relative_path || res.file_path;
-            onToast(`Captured: ${relPath}`);
-            try {
-              await navigator.clipboard.writeText(relPath);
-            } catch {}
+            
+            if (agyMode) {
+              onToast(`Archived: ${relPath} (AGY attached)`);
+            } else {
+              onToast(`Captured: ${relPath}`);
+              try {
+                await navigator.clipboard.writeText(relPath);
+              } catch {}
+            }
             onCaptureSaved?.();
           } catch (err) {
             console.error('Failed to upload screenshot', err);
@@ -620,7 +630,32 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1">
+          {/* AGY Mode Toggle Pill */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAgyMode?.();
+            }}
+            title={
+              agyMode
+                ? 'AGY Mode Active: AGY attaches images natively from clipboard. Terminal path injection muted. Click to toggle Direct Path mode.'
+                : 'Direct Path Mode Active: Pastes relative file path into terminal prompt on Ctrl+V. Click to toggle AGY mode.'
+            }
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-all duration-150 cursor-pointer select-none ${
+              agyMode
+                ? 'bg-amber-400/10 text-amber-300 border border-amber-400/30 hover:bg-amber-400/20'
+                : 'bg-white/[0.04] text-zinc-400 border border-white/[0.06] hover:text-zinc-200 hover:bg-white/[0.08]'
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                agyMode ? 'bg-amber-400 shadow-[0_0_5px_rgba(245,158,11,0.8)]' : 'bg-zinc-500'
+              }`}
+            />
+            <span>{agyMode ? 'AGY' : 'Path'}</span>
+          </button>
+
           <button
             onClick={async (e) => {
               e.stopPropagation();
@@ -629,7 +664,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
                 onToast('No image in clipboard');
               }
             }}
-            title="Paste screenshot from clipboard (Ctrl+V)"
+            title={
+              agyMode
+                ? 'Archive screenshot from clipboard (Ctrl+V) [AGY Mode: path muted]'
+                : 'Paste screenshot from clipboard (Ctrl+V) [Direct Path Mode: injects path]'
+            }
             className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-colors"
           >
             <Image className="w-3.5 h-3.5" />
@@ -638,7 +677,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           {/* Input images from Explorer */}
           <button
             onClick={handleOpenFileDialog}
-            title="Input images (Select multiple from Explorer)"
+            title="Input images (Select multiple from Explorer and insert relative paths)"
             className="flex items-center gap-1 px-1.5 py-0.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-colors"
           >
             <ImagePlus className="w-3.5 h-3.5 text-amber-400" />

@@ -129,7 +129,8 @@ export async function resizeSession(id: string, rows: number, cols: number): Pro
 export async function uploadScreenshot(
   base64Data: string,
   sessionId?: string,
-  filename?: string
+  filename?: string,
+  pasteToTerminal: boolean = true
 ): Promise<{ success: boolean; file_path: string; relative_path: string }> {
   const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
   const res = await fetch(`${API_BASE}/api/upload${tokenParam}`, {
@@ -139,6 +140,7 @@ export async function uploadScreenshot(
       image: base64Data,
       filename,
       session_id: sessionId,
+      paste_to_terminal: pasteToTerminal,
     }),
   });
   if (!res.ok) throw new Error('Failed to upload image');

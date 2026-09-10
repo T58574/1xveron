@@ -55,6 +55,21 @@ export const App: React.FC = () => {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [toast, setToast] = useState<string | null>(null);
 
+  // AGY Mode (native clipboard media attachments without terminal path injection)
+  const [agyMode, setAgyMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('veron_agy_mode');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const handleToggleAgyMode = (enabled?: boolean) => {
+    setAgyMode((prev) => {
+      const next = enabled !== undefined ? enabled : !prev;
+      localStorage.setItem('veron_agy_mode', String(next));
+      showToast(next ? 'AGY Mode enabled (Path paste muted)' : 'Direct Path Mode enabled');
+      return next;
+    });
+  };
+
   const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 768);
 
   // Authentication state
@@ -607,6 +622,8 @@ export const App: React.FC = () => {
         }}
         theme={theme}
         onToast={showToast}
+        agyMode={agyMode}
+        onToggleAgyMode={() => handleToggleAgyMode()}
       />
     );
   };
@@ -755,6 +772,8 @@ export const App: React.FC = () => {
         onOpenCapturesFolder={handleOpenCapturesFolder}
         systemInfo={systemInfo}
         onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
+        agyMode={agyMode}
+        onToggleAgyMode={handleToggleAgyMode}
       />
 
       {/* Quick Scripts / Command Palette Modal */}

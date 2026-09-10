@@ -75,6 +75,7 @@ pub struct UploadPayload {
     pub image: String,
     pub filename: Option<String>,
     pub session_id: Option<String>,
+    pub paste_to_terminal: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -522,10 +523,12 @@ async fn upload_screenshot(
     if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
         return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
     }
+    let paste_to_terminal = payload.paste_to_terminal.unwrap_or(true);
     match state.manager.save_image_and_paste(
         &payload.image,
         payload.filename.as_deref(),
         payload.session_id.as_deref(),
+        paste_to_terminal,
     ) {
         Ok(capture) => Ok(Json(UploadResponse {
             success: true,

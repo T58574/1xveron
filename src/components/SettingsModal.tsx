@@ -11,6 +11,7 @@ import {
   Copy,
   Check,
   Shield,
+  Bot,
 } from 'lucide-react';
 import { CapturesInfo, SystemInfo } from '../types';
 
@@ -24,6 +25,8 @@ interface SettingsModalProps {
   onOpenCapturesFolder: () => void;
   systemInfo: SystemInfo | null;
   onOpenRemoteModal: () => void;
+  agyMode: boolean;
+  onToggleAgyMode: (enabled?: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -36,6 +39,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenCapturesFolder,
   systemInfo,
   onOpenRemoteModal,
+  agyMode,
+  onToggleAgyMode,
 }) => {
   const [copiedToken, setCopiedToken] = useState(false);
 
@@ -129,6 +134,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="text-xs font-semibold">Light Mode</div>
                   <div className="text-[10px] text-zinc-500">High Contrast Day</div>
                 </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Section: AI Agent Integration & Paste Mode */}
+          <div>
+            <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider block mb-2.5">
+              AI Agent & Image Paste Mode
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* AGY Mode */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!agyMode) onToggleAgyMode(true);
+                }}
+                className={`flex flex-col p-3.5 rounded-xl border transition-all text-left cursor-pointer ${
+                  agyMode
+                    ? 'bg-[#090a0d] border-amber-400/60 ring-1 ring-amber-400/30 text-white'
+                    : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:bg-white/[0.04]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`p-1.5 rounded-lg ${
+                        agyMode ? 'bg-amber-400/20 text-amber-400' : 'bg-white/[0.05] text-zinc-400'
+                      }`}
+                    >
+                      <Bot className="w-4 h-4" />
+                    </div>
+                    <span className="text-xs font-semibold">AGY Mode</span>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-300 border border-amber-400/20 font-medium">
+                    Recommended
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  For AGY CLI 1.2+. AGY attaches images natively via clipboard; Veron saves captures to disk (.veron/captures) without polluting prompt with text paths.
+                </p>
+              </button>
+
+              {/* Direct Path Mode */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (agyMode) onToggleAgyMode(false);
+                }}
+                className={`flex flex-col p-3.5 rounded-xl border transition-all text-left cursor-pointer ${
+                  !agyMode
+                    ? 'bg-[#090a0d] border-amber-400/60 ring-1 ring-amber-400/30 text-white'
+                    : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:bg-white/[0.04]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`p-1.5 rounded-lg ${
+                        !agyMode ? 'bg-amber-400/20 text-amber-400' : 'bg-white/[0.05] text-zinc-400'
+                      }`}
+                    >
+                      <Image className="w-4 h-4" />
+                    </div>
+                    <span className="text-xs font-semibold">Direct Path Mode</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Automatically types relative file path (.veron/captures/...) into terminal prompt on Ctrl+V. Ideal for local models, bash, and custom scripts.
+                </p>
               </button>
             </div>
           </div>
