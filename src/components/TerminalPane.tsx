@@ -17,6 +17,7 @@ interface TerminalPaneProps {
   onRename?: (newName: string) => void;
   theme: 'dark' | 'light';
   onToast: (msg: string) => void;
+  onCaptureSaved?: () => void;
 }
 
 export const TerminalPane: React.FC<TerminalPaneProps> = ({
@@ -30,11 +31,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   onRename,
   theme,
   onToast,
+  onCaptureSaved,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const isUploadingRef = useRef(false);
+  const lastPasteHandledTimeRef = useRef(0);
   const [isCopiedPath, setIsCopiedPath] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState(session?.name || '');
@@ -167,40 +171,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     };
   }, [session?.id, theme]);
 
-  const handlePasteOrDrop = async (event: React.ClipboardEvent | React.DragEvent) => {
-    let items: DataTransferItemList | null = null;
-    let files: FileList | null = null;
-
-    if ('clipboardData' in event) {
-      items = event.clipboardData?.items || null;
-      files = event.clipboardData?.files || null;
-    } else if ('dataTransfer' in event) {
-      items = event.dataTransfer?.items || null;
-      files = event.dataTransfer?.files || null;
-    }
-
-    let imageFile: File | null = null;
-    if (files && files.length > 0) {
-      for (let i = 0; i < files.length; i++) {
-        if (files[i].type.startsWith('image/')) {
-          imageFile = files[i];
-          break;
-        }
-      }
-    }
-
-    if (!imageFile && items) {
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.startsWith('image/')) {
-          imageFile = items[i].getAsFile();
-          break;
-        }
-      }
-    }
-
-    if (imageFile && session) {
-      event.preventDefault();
-      event.stopPropagation();
+  const processAndUploadImage = async (imageFile: File | Blob) => {
+    if (!session || isUploadingRef.current) return;
+    isUploadingRef.current = true;
+    try {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const base64 = e.target?.result as string;
@@ -208,13 +182,173 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           try {
             onToast('Saving capture...');
             const res = await uploadScreenshot(base64, session.id);
-            onToast(`Captured: ${res.file_path.split('\\').pop()}`);
-          } catch {
+            const relPath = res.relative_path || res.file_path;
+            onToast(`Captured: ${relPath}`);
+            try {
+              await navigator.clipboard.writeText(relPath);
+            } catch {}
+            onCaptureSaved?.();
+          } catch (err) {
+            console.error('Failed to upload screenshot', err);
             onToast('Failed to save image');
+          } finally {
+            isUploadingRef.current = false;
           }
+        } else {
+          isUploadingRef.current = false;
         }
       };
+      reader.onerror = () => {
+        isUploadingRef.current = false;
+        onToast('Failed to read image');
+      };
       reader.readAsDataURL(imageFile);
+    } catch {
+      isUploadingRef.current = false;
+    }
+  };
+
+  const extractImageFile = (dataTransfer: DataTransfer | null): File | null => {
+    if (!dataTransfer) return null;
+    if (dataTransfer.files && dataTransfer.files.length > 0) {
+      for (let i = 0; i < dataTransfer.files.length; i++) {
+        const file = dataTransfer.files[i];
+        if (
+          file.type.startsWith('image/') ||
+          /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(file.name)
+        ) {
+          return file;
+        }
+      }
+    }
+    if (dataTransfer.items && dataTransfer.items.length > 0) {
+      for (let i = 0; i < dataTransfer.items.length; i++) {
+        const item = dataTransfer.items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) return file;
+        }
+      }
+    }
+    return null;
+  };
+
+  const tryReadClipboardImage = async (): Promise<boolean> => {
+    if (!session || isUploadingRef.current) return false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find((t) => t.startsWith('image/'));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            const file = new File([blob], `screenshot_${Date.now()}.png`, {
+              type: imageType,
+            });
+            await processAndUploadImage(file);
+            return true;
+          }
+        }
+      }
+    } catch {
+      // Permission denied or clipboard does not have an image
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!session) return;
+
+    const handleNativePaste = async (event: ClipboardEvent) => {
+      const imageFile = extractImageFile(event.clipboardData);
+      if (imageFile) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        lastPasteHandledTimeRef.current = Date.now();
+        await processAndUploadImage(imageFile);
+      }
+    };
+
+    const handleNativeDrop = async (event: DragEvent) => {
+      const imageFile = extractImageFile(event.dataTransfer);
+      if (imageFile) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        await processAndUploadImage(imageFile);
+      }
+    };
+
+    const handleNativeDragOver = (event: DragEvent) => {
+      if (event.dataTransfer && Array.from(event.dataTransfer.types).includes('Files')) {
+        event.preventDefault();
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('paste', handleNativePaste, { capture: true });
+      container.addEventListener('drop', handleNativeDrop, { capture: true });
+      container.addEventListener('dragover', handleNativeDragOver, { capture: true });
+    }
+
+    // Global listener for active pane
+    const handleWindowPaste = async (event: ClipboardEvent) => {
+      if (!isActive) return;
+      if (container && container.contains(event.target as Node)) {
+        return;
+      }
+      const imageFile = extractImageFile(event.clipboardData);
+      if (imageFile) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        lastPasteHandledTimeRef.current = Date.now();
+        await processAndUploadImage(imageFile);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isActive) return;
+      const isPasteKey =
+        (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !event.altKey;
+      const isShiftInsert = event.shiftKey && event.key === 'Insert';
+      if (isPasteKey || isShiftInsert) {
+        setTimeout(async () => {
+          if (Date.now() - lastPasteHandledTimeRef.current > 80) {
+            await tryReadClipboardImage();
+          }
+        }, 50);
+      }
+    };
+
+    window.addEventListener('paste', handleWindowPaste, { capture: true });
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+
+    return () => {
+      if (container) {
+        container.removeEventListener('paste', handleNativePaste, { capture: true });
+        container.removeEventListener('drop', handleNativeDrop, { capture: true });
+        container.removeEventListener('dragover', handleNativeDragOver, { capture: true });
+      }
+      window.removeEventListener('paste', handleWindowPaste, { capture: true });
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+    };
+  }, [session?.id, isActive]);
+
+  const handlePasteOrDrop = async (event: React.ClipboardEvent | React.DragEvent) => {
+    let dataTransfer: DataTransfer | null = null;
+    if ('clipboardData' in event) {
+      dataTransfer = event.clipboardData;
+    } else if ('dataTransfer' in event) {
+      dataTransfer = event.dataTransfer;
+    }
+    const imageFile = extractImageFile(dataTransfer);
+    if (imageFile && session) {
+      event.preventDefault();
+      event.stopPropagation();
+      await processAndUploadImage(imageFile);
     }
   };
 
@@ -325,12 +459,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-0.5">
-          <div
-            title="Paste images (Ctrl+V) to auto-save and insert path"
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              const handled = await tryReadClipboardImage();
+              if (!handled) {
+                onToast('No image in clipboard');
+              }
+            }}
+            title="Paste screenshot from clipboard (Ctrl+V)"
             className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-colors"
           >
             <Image className="w-3.5 h-3.5" />
-          </div>
+          </button>
 
           <button
             onClick={(e) => {

@@ -72,6 +72,7 @@ pub struct UploadPayload {
 pub struct UploadResponse {
     pub success: bool,
     pub file_path: String,
+    pub relative_path: String,
 }
 
 #[derive(Serialize)]
@@ -377,9 +378,10 @@ async fn upload_screenshot(
         return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
     }
     match state.manager.save_image_and_paste(&payload.image, payload.session_id.as_deref()) {
-        Ok(path) => Ok(Json(UploadResponse {
+        Ok(capture) => Ok(Json(UploadResponse {
             success: true,
-            file_path: path,
+            file_path: capture.file_path,
+            relative_path: capture.relative_path,
         })),
         Err(e) => Err((StatusCode::BAD_REQUEST, e)),
     }

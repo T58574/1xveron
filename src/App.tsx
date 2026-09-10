@@ -377,6 +377,10 @@ export const App: React.FC = () => {
         }}
         theme={theme}
         onToast={showToast}
+        onCaptureSaved={async () => {
+          const caps = await fetchCapturesInfo().catch(() => null);
+          if (caps) setCapturesInfo(caps);
+        }}
       />
     );
   };

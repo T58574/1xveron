@@ -128,7 +128,7 @@ export async function resizeSession(id: string, rows: number, cols: number): Pro
 export async function uploadScreenshot(
   base64Data: string,
   sessionId?: string
-): Promise<{ success: boolean; file_path: string }> {
+): Promise<{ success: boolean; file_path: string; relative_path: string }> {
   const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
   const res = await fetch(`${API_BASE}/api/upload${tokenParam}`, {
     method: 'POST',

@@ -29,6 +29,12 @@ pub struct Workspace {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedCapture {
+    pub file_path: String,
+    pub relative_path: String,
+}
+
 pub struct Session {
     pub id: String,
     pub name: String,
@@ -93,15 +99,63 @@ impl SessionManager {
         self.workspaces.read().clone()
     }
 
-    #[allow(dead_code)]
-    pub fn add_workspace(&self, name: String, path: String) -> Workspace {
+    pub fn add_workspace(&self, name: String, path: Option<String>) -> Workspace {
+        let ws_path = path.unwrap_or_else(|| {
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "C:\\".to_string())
+        });
         let ws = Workspace {
             id: Uuid::new_v4().to_string(),
             name,
-            path,
+            path: ws_path,
         };
         self.workspaces.write().push(ws.clone());
         ws
+    }
+
+    pub fn remove_workspace(&self, id: &str) -> bool {
+        // Collect sessions belonging to this workspace and close them cleanly
+        let session_ids: Vec<String> = {
+            let sessions = self.sessions.read();
+            sessions
+                .values()
+                .filter(|s| s.workspace_id == id)
+                .map(|s| s.id.clone())
+                .collect()
+        };
+
+        for sid in session_ids {
+            self.close_session(&sid);
+        }
+
+        let mut workspaces = self.workspaces.write();
+        let initial_len = workspaces.len();
+        workspaces.retain(|w| w.id != id);
+
+        // If all workspaces were deleted, restore a default one
+        if workspaces.is_empty() {
+            let default_ws = Workspace {
+                id: "default".to_string(),
+                name: "default".to_string(),
+                path: std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "C:\\".to_string()),
+            };
+            workspaces.push(default_ws);
+        }
+
+        workspaces.len() != initial_len
+    }
+
+    pub fn rename_workspace(&self, id: &str, new_name: &str) -> bool {
+        let mut workspaces = self.workspaces.write();
+        if let Some(ws) = workspaces.iter_mut().find(|w| w.id == id) {
+            ws.name = new_name.trim().to_string();
+            true
+        } else {
+            false
+        }
     }
 
     pub fn create_session(
@@ -122,7 +176,15 @@ impl SessionManager {
             }
         });
 
+        let ws_id = workspace_id.unwrap_or_else(|| "default".to_string());
+
         let current_dir = cwd.unwrap_or_else(|| {
+            let workspaces = self.workspaces.read();
+            if let Some(ws) = workspaces.iter().find(|w| w.id == ws_id) {
+                if !ws.path.is_empty() {
+                    return ws.path.clone();
+                }
+            }
             std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| "C:\\".to_string())
@@ -140,8 +202,6 @@ impl SessionManager {
                 "Terminal".to_string()
             }
         });
-
-        let ws_id = workspace_id.unwrap_or_else(|| "default".to_string());
 
         let (output_tx, mut output_rx) = broadcast::channel(1024);
         let history = Arc::new(Mutex::new(Vec::new()));
@@ -281,7 +341,9 @@ impl SessionManager {
         &self,
         base64_data: &str,
         session_id: Option<&str>,
-    ) -> Result<String, String> {
+    ) -> Result<SavedCapture, String> {
+        let _ = std::fs::create_dir_all(&self.captures_dir);
+
         // Strip data:image/png;base64, prefix if present
         let clean_base64 = if let Some(idx) = base64_data.find(",") {
             &base64_data[idx + 1..]
@@ -301,30 +363,40 @@ impl SessionManager {
         std::fs::write(&target_path, &bytes)
             .map_err(|e| format!("Failed to save image file: {}", e))?;
 
-        let mut full_path_str = target_path
+        let full_path_buf = target_path
             .canonicalize()
-            .unwrap_or(target_path)
+            .unwrap_or_else(|_| target_path.clone());
+        let full_path_str = strip_extended_prefix(&full_path_buf)
             .to_string_lossy()
             .to_string();
 
-        if full_path_str.starts_with(r"\\?\") {
-            full_path_str = full_path_str[4..].to_string();
-        }
+        // Determine base directory for relative path calculation
+        let base_dir = session_id
+            .and_then(|sid| self.sessions.read().get(sid).map(|s| PathBuf::from(&s.cwd)))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
-        info!("Saved clipboard image to: {}", full_path_str);
+        let relative_path = calculate_relative_path(&base_dir, &target_path);
 
-        // If a target session is active, write the path directly into its stdin
+        info!(
+            "Saved clipboard image: full={}, relative={}",
+            full_path_str, relative_path
+        );
+
+        // If a target session is active, write the relative path directly into its stdin
         if let Some(sid) = session_id {
             // Write formatted path surrounded by quotes if it contains spaces
-            let formatted = if full_path_str.contains(' ') {
-                format!("\"{}\"", full_path_str)
+            let formatted = if relative_path.contains(' ') {
+                format!("\"{}\"", relative_path)
             } else {
-                full_path_str.clone()
+                relative_path.clone()
             };
             let _ = self.write_input(sid, formatted.as_bytes());
         }
 
-        Ok(full_path_str)
+        Ok(SavedCapture {
+            file_path: full_path_str,
+            relative_path,
+        })
     }
 
     pub fn get_captures_info(&self) -> (usize, u64) {
@@ -363,3 +435,102 @@ impl Drop for SessionManager {
         self.close_all();
     }
 }
+
+fn calculate_relative_path(base: &std::path::Path, target: &std::path::Path) -> String {
+    let base_canon = base
+        .canonicalize()
+        .unwrap_or_else(|_| base.to_path_buf());
+    let target_canon = target
+        .canonicalize()
+        .unwrap_or_else(|_| target.to_path_buf());
+
+    let clean_base = strip_extended_prefix(&base_canon);
+    let clean_target = strip_extended_prefix(&target_canon);
+
+    // If target is directly inside base directory
+    if let Ok(rel) = clean_target.strip_prefix(&clean_base) {
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        if rel_str.is_empty() {
+            return ".".to_string();
+        }
+        if rel_str.starts_with('.') {
+            return rel_str;
+        } else {
+            return format!("./{}", rel_str);
+        }
+    }
+
+    // Otherwise compute relative path by diffing components
+    let base_components: Vec<_> = clean_base.components().collect();
+    let target_components: Vec<_> = clean_target.components().collect();
+
+    if !base_components.is_empty()
+        && !target_components.is_empty()
+        && base_components[0] == target_components[0]
+    {
+        let mut common_len = 0;
+        while common_len < base_components.len()
+            && common_len < target_components.len()
+            && base_components[common_len] == target_components[common_len]
+        {
+            common_len += 1;
+        }
+
+        let mut parts = Vec::new();
+        for _ in common_len..base_components.len() {
+            parts.push("..".to_string());
+        }
+        for comp in &target_components[common_len..] {
+            if let Some(s) = comp.as_os_str().to_str() {
+                parts.push(s.to_string());
+            }
+        }
+
+        let rel = parts.join("/");
+        if !rel.is_empty() {
+            return rel;
+        }
+    }
+
+    clean_target.to_string_lossy().replace('\\', "/")
+}
+
+fn strip_extended_prefix(path: &std::path::Path) -> std::path::PathBuf {
+    let s = path.to_string_lossy();
+    if s.starts_with(r"\\?\") {
+        std::path::PathBuf::from(&s[4..])
+    } else {
+        path.to_path_buf()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_relative_path_nested() {
+        let base = Path::new(r"C:\Users\user\Documents\dev\veron");
+        let target = Path::new(r"C:\Users\user\Documents\dev\veron\.veron\captures\screenshot_20260910_070000.png");
+        let rel = calculate_relative_path(base, target);
+        assert_eq!(rel, ".veron/captures/screenshot_20260910_070000.png");
+    }
+
+    #[test]
+    fn test_relative_path_subdirectory() {
+        let base = Path::new(r"C:\Users\user\Documents\dev\veron\src-tauri");
+        let target = Path::new(r"C:\Users\user\Documents\dev\veron\.veron\captures\screenshot_20260910_070000.png");
+        let rel = calculate_relative_path(base, target);
+        assert_eq!(rel, "../.veron/captures/screenshot_20260910_070000.png");
+    }
+
+    #[test]
+    fn test_relative_path_verbatim_prefix() {
+        let base = Path::new(r"\\?\C:\Users\user\Documents\dev\veron");
+        let target = Path::new(r"\\?\C:\Users\user\Documents\dev\veron\.veron\captures\screenshot_20260910_070000.png");
+        let rel = calculate_relative_path(base, target);
+        assert_eq!(rel, ".veron/captures/screenshot_20260910_070000.png");
+    }
+}
+
