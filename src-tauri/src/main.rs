@@ -1,4 +1,4 @@
-// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![windows_subsystem = "windows"]
 
 mod pty;
 mod server;
@@ -17,9 +17,21 @@ use tao::{
 };
 use wry::WebViewBuilder;
 
+#[cfg(windows)]
+extern "system" {
+    fn AttachConsole(dwProcessId: u32) -> i32;
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let server_only = args.iter().any(|arg| arg == "--server-only" || arg == "--headless");
+
+    #[cfg(windows)]
+    if server_only {
+        unsafe {
+            AttachConsole(0xFFFFFFFF); // ATTACH_PARENT_PROCESS
+        }
+    }
 
     let port: u16 = std::env::var("PORT")
         .ok()
