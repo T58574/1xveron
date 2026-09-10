@@ -259,6 +259,10 @@ export const App: React.FC = () => {
   const handleCreateSession = async (shell?: string, wsId?: string) => {
     const targetWsId = wsId || activeWsId;
     const targetWs = workspaces.find((w) => w.id === targetWsId) || activeWorkspace;
+    const isAgy =
+      targetWs?.kind === 'antigravity' ||
+      targetWs?.name.toLowerCase().includes('antigravity') ||
+      targetWs?.name.toLowerCase().includes('agy');
     const targetSessions = sessions.filter(
       (s) => s.workspace_id === targetWsId || (!s.workspace_id && targetWsId === 'default')
     );
@@ -269,10 +273,16 @@ export const App: React.FC = () => {
     }
 
     try {
+      const nextIndex = targetSessions.length + 1;
+      const sessionName = isAgy ? `Antigravity ${nextIndex}` : undefined;
+      const initCmd = isAgy ? 'agy\r' : undefined;
+
       const newSession = await createSession({
         shell,
         workspace_id: targetWsId,
         cwd: targetWs?.path,
+        name: sessionName,
+        init_cmd: initCmd,
       });
 
       setSessions((prev) => [...prev, newSession]);
@@ -304,16 +314,24 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleCreateWorkspace = async (name: string, path?: string, shell?: string) => {
+  const handleCreateWorkspace = async (
+    name: string,
+    path?: string,
+    shell?: string,
+    kind?: 'antigravity' | 'terminal'
+  ) => {
     try {
-      const newWs = await createWorkspace({ name, path });
+      const newWs = await createWorkspace({ name, path, kind });
       setWorkspaces((prev) => [...prev, newWs]);
 
-      // Auto-launch initial session in this new workspace group
+      const isAgy = kind === 'antigravity';
+      // Auto-launch initial session in this new workspace group with agy
       const firstSession = await createSession({
         shell,
         workspace_id: newWs.id,
         cwd: path,
+        name: isAgy ? 'Antigravity 1' : undefined,
+        init_cmd: isAgy ? 'agy\r' : undefined,
       });
 
       setSessions((prev) => [...prev, firstSession]);
@@ -328,7 +346,7 @@ export const App: React.FC = () => {
       }));
 
       handleSelectWorkspace(newWs.id);
-      showToast(`Created workspace "${newWs.name}"`);
+      showToast(`Created ${isAgy ? 'Antigravity ' : ''}workspace "${newWs.name}"`);
     } catch (e) {
       showToast('Failed to create workspace');
     }
@@ -698,6 +716,7 @@ export const App: React.FC = () => {
         onClose={() => setIsCreateWorkspaceModalOpen(false)}
         onCreate={handleCreateWorkspace}
         availableShells={systemInfo?.available_shells}
+        defaultPath={activeWorkspace?.path || 'C:\\Users\\user\\Documents\\dev\\veron'}
       />
 
       {/* Local Wi-Fi Remote Modal */}

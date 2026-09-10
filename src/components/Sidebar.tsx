@@ -19,6 +19,7 @@ import {
   Check,
 } from 'lucide-react';
 import { CapturesInfo, SessionInfo, SystemInfo, Workspace } from '../types';
+import { AntigravityIcon } from './AntigravityIcon';
 
 interface SidebarProps {
   sessions: SessionInfo[];
@@ -231,6 +232,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const isActiveWs = activeWorkspaceId === ws.id;
           const isRenaming = editingWorkspaceId === ws.id;
           const isFull = wsSessions.length >= 6;
+          const isAntigravity =
+            ws.kind === 'antigravity' ||
+            ws.name.toLowerCase().includes('antigravity') ||
+            ws.name.toLowerCase().includes('agy');
 
           return (
             <div
@@ -238,7 +243,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className={`rounded-lg transition-all duration-150 border ${
                 isActiveWs
                   ? isDark
-                    ? 'bg-[#12141c]/90 border-amber-400/40 shadow-sm shadow-amber-500/5'
+                    ? isAntigravity
+                      ? 'bg-[#12141c]/90 border-amber-400/50 shadow-sm shadow-amber-500/10'
+                      : 'bg-[#12141c]/90 border-amber-400/40 shadow-sm shadow-amber-500/5'
                     : 'bg-amber-50/70 border-amber-400/50 shadow-sm'
                   : isDark
                   ? 'bg-transparent border-transparent hover:bg-white/[0.02]'
@@ -292,15 +299,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
+                        {isAntigravity ? (
+                          <AntigravityIcon
+                            size={14}
+                            mode={isActiveWs ? 'gradient' : 'amber'}
+                            className="shrink-0"
+                          />
+                        ) : (
+                          <Layers className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                        )}
                         <span
                           onDoubleClick={(e) => startRenaming(ws, e)}
                           title="Click to switch workspace, double-click to rename"
                           className={`truncate text-xs font-semibold tracking-tight ${
-                            isActiveWs ? 'text-amber-400' : 'text-zinc-300 group-hover:text-zinc-100'
+                            isActiveWs
+                              ? 'text-amber-400'
+                              : 'text-zinc-300 group-hover:text-zinc-100'
                           }`}
                         >
                           {ws.name}
                         </span>
+                        {isAntigravity && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30">
+                            AGY
+                          </span>
+                        )}
                         {isActiveWs && (
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
                         )}
@@ -309,7 +332,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                     <span className="truncate text-[10px] text-zinc-500 flex items-center gap-1">
                       <Folder className="w-2.5 h-2.5 shrink-0" />
-                      {ws.path ? ws.path.split('\\').pop() || ws.path : 'default'}
+                      {ws.path ? ws.path.split('\\').pop() || ws.path : 'veron'}
                     </span>
                   </div>
                 </div>
@@ -387,10 +410,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           onSelectWorkspace(ws.id);
                           onCreateSession(undefined, ws.id);
                         }}
-                        className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-white/[0.04] hover:bg-amber-400/10 hover:text-amber-400 text-zinc-400 transition-colors"
+                        className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded bg-white/[0.04] hover:bg-amber-400/10 hover:text-amber-400 text-zinc-400 transition-colors"
                       >
-                        <Plus className="w-3 h-3" />
-                        <span>Launch Terminal</span>
+                        {isAntigravity ? <AntigravityIcon size={12} mode="gradient" /> : <Plus className="w-3 h-3" />}
+                        <span>{isAntigravity ? 'Launch AGY Session' : 'Launch Terminal'}</span>
                       </button>
                     </div>
                   ) : (
@@ -411,13 +434,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0 pr-2">
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                session.is_alive
-                                  ? 'bg-amber-400 shadow-[0_0_4px_rgba(245,158,11,0.6)]'
-                                  : 'bg-zinc-600'
-                              }`}
-                            />
+                            {isAntigravity ? (
+                              <AntigravityIcon
+                                size={13}
+                                mode={session.is_alive ? 'gradient' : 'monochrome'}
+                                className="shrink-0"
+                              />
+                            ) : (
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                  session.is_alive
+                                    ? 'bg-amber-400 shadow-[0_0_4px_rgba(245,158,11,0.6)]'
+                                    : 'bg-zinc-600'
+                                }`}
+                              />
+                            )}
                             <div className="flex flex-col min-w-0">
                               <span className="truncate text-xs font-medium tracking-tight">
                                 {session.name}

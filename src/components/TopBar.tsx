@@ -15,6 +15,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { LayoutMode, ShellOption, SystemInfo, Workspace } from '../types';
+import { AntigravityIcon } from './AntigravityIcon';
 
 interface TopBarProps {
   layoutMode: LayoutMode;
@@ -61,6 +62,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   ];
 
   const isFull = activeWorkspaceSessionCount >= 6;
+  const isAntigravity =
+    activeWorkspace?.kind === 'antigravity' ||
+    activeWorkspace?.name.toLowerCase().includes('antigravity') ||
+    activeWorkspace?.name.toLowerCase().includes('agy');
 
   return (
     <header
@@ -76,10 +81,19 @@ export const TopBar: React.FC<TopBarProps> = ({
             title="Switch Workspace Group"
             className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#141620] border border-amber-400/30 hover:border-amber-400/60 text-zinc-200 text-xs font-medium transition-all shadow-sm"
           >
-            <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            {isAntigravity ? (
+              <AntigravityIcon size={15} mode="gradient" className="shrink-0" />
+            ) : (
+              <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            )}
             <span className="font-semibold text-zinc-100 max-w-[130px] truncate">
               {activeWorkspace?.name || 'Workspace'}
             </span>
+            {isAntigravity && (
+              <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30">
+                AGY
+              </span>
+            )}
             <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-400/15 text-amber-300 font-mono">
               {activeWorkspaceSessionCount}/6
             </span>
@@ -88,7 +102,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
           {isWorkspaceDropdownOpen && (
             <div
-              className="absolute left-0 mt-1.5 w-60 rounded-xl bg-[#13151c] border border-white/[0.08] shadow-2xl py-1.5 z-50 text-xs backdrop-blur-md"
+              className="absolute left-0 mt-1.5 w-64 rounded-xl bg-[#13151c] border border-white/[0.08] shadow-2xl py-1.5 z-50 text-xs backdrop-blur-md"
               onClick={() => setIsWorkspaceDropdownOpen(false)}
             >
               <div className="px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
@@ -97,6 +111,11 @@ export const TopBar: React.FC<TopBarProps> = ({
 
               {workspaces.map((ws) => {
                 const isCurrent = ws.id === activeWorkspace?.id;
+                const isWsAgy =
+                  ws.kind === 'antigravity' ||
+                  ws.name.toLowerCase().includes('antigravity') ||
+                  ws.name.toLowerCase().includes('agy');
+
                 return (
                   <button
                     key={ws.id}
@@ -106,8 +125,17 @@ export const TopBar: React.FC<TopBarProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2 truncate">
-                      <Layers className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                      {isWsAgy ? (
+                        <AntigravityIcon size={14} mode={isCurrent ? 'gradient' : 'amber'} className="shrink-0" />
+                      ) : (
+                        <Layers className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                      )}
                       <span className="truncate">{ws.name}</span>
+                      {isWsAgy && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-amber-400/15 text-amber-300">
+                          AGY
+                        </span>
+                      )}
                     </div>
                     {isCurrent && (
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
@@ -157,20 +185,30 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right Action Tools */}
       <div className="flex items-center gap-2">
-        {/* Launch Shell Dropdown */}
+        {/* Launch Shell / AGY Dropdown */}
         <div className="relative">
           <button
             onClick={() => !isFull && setIsShellDropdownOpen(!isShellDropdownOpen)}
             disabled={isFull}
-            title={isFull ? 'Workspace limit reached (max 6 windows)' : 'Launch new shell in active workspace'}
+            title={
+              isFull
+                ? 'Workspace limit reached (max 6 windows)'
+                : isAntigravity
+                ? 'Launch new AGY session in this workspace'
+                : 'Launch new shell in active workspace'
+            }
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-150 border ${
               isFull
                 ? 'opacity-40 cursor-not-allowed bg-white/[0.02] border-white/[0.04] text-zinc-500'
                 : 'bg-white/[0.04] hover:bg-white/[0.08] hover:text-amber-400 text-zinc-300 border-white/[0.06]'
             }`}
           >
-            <Plus className="w-3.5 h-3.5 text-amber-400" />
-            <span>{isFull ? '6/6 Full' : 'New Shell'}</span>
+            {isAntigravity ? (
+              <AntigravityIcon size={14} mode="gradient" className="shrink-0" />
+            ) : (
+              <Plus className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span>{isFull ? '6/6 Full' : isAntigravity ? 'New AGY' : 'New Shell'}</span>
             {!isFull && <ChevronDown className="w-3 h-3 opacity-60" />}
           </button>
 
