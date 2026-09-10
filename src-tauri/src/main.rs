@@ -4,8 +4,7 @@ mod pty;
 mod server;
 mod session;
 
-use local_ip_address::local_ip;
-use server::{create_router, AppState};
+use server::{create_router, get_network_interfaces, AppState};
 use session::SessionManager;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -79,9 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     });
 
-    let ip = local_ip()
-        .map(|i| i.to_string())
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
+    let (ip, _) = get_network_interfaces();
 
     println!("\n╔═══════════════════════════════════════════════════════════╗");
     println!("║                   VERON NATIVE DESKTOP                    ║");
