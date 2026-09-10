@@ -12,6 +12,7 @@ export interface Workspace {
   id: string;
   name: string;
   path: string;
+  kind?: 'antigravity' | 'terminal';
 }
 
 export interface ShellOption {

@@ -52,6 +52,7 @@ pub struct CreateSessionPayload {
     pub cwd: Option<String>,
     pub name: Option<String>,
     pub workspace_id: Option<String>,
+    pub init_cmd: Option<String>,
     pub rows: Option<u16>,
     pub cols: Option<u16>,
 }
@@ -65,6 +66,19 @@ pub struct ResizePayload {
 #[derive(Deserialize)]
 pub struct UploadPayload {
     pub image: String,
+    pub filename: Option<String>,
+    pub session_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UploadItem {
+    pub image: String,
+    pub filename: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct BatchUploadPayload {
+    pub images: Vec<UploadItem>,
     pub session_id: Option<String>,
 }
 
@@ -73,6 +87,15 @@ pub struct UploadResponse {
     pub success: bool,
     pub file_path: String,
     pub relative_path: String,
+}
+
+#[derive(Serialize)]
+pub struct BatchUploadResponse {
+    pub success: bool,
+    pub count: usize,
+    pub files: Vec<crate::session::SavedCapture>,
+    pub relative_paths: Vec<String>,
+    pub paths_string: String,
 }
 
 #[derive(Serialize)]
@@ -101,6 +124,7 @@ pub struct RenamePayload {
 pub struct CreateWorkspacePayload {
     pub name: String,
     pub path: Option<String>,
+    pub kind: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -151,6 +175,10 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/upload",
             post(upload_screenshot).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
+        )
+        .route(
+            "/api/upload/batch",
+            post(upload_batch_screenshots).layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
         )
         .route("/api/captures", get(get_captures_info).delete(clear_captures))
         .route("/api/captures/open", post(open_captures_folder))
@@ -309,6 +337,7 @@ async fn create_session(
             payload.cwd,
             payload.name,
             payload.workspace_id,
+            payload.init_cmd,
             rows,
             cols,
         )
@@ -392,12 +421,65 @@ async fn upload_screenshot(
     if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
         return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
     }
-    match state.manager.save_image_and_paste(&payload.image, payload.session_id.as_deref()) {
+    match state.manager.save_image_and_paste(
+        &payload.image,
+        payload.filename.as_deref(),
+        payload.session_id.as_deref(),
+    ) {
         Ok(capture) => Ok(Json(UploadResponse {
             success: true,
             file_path: capture.file_path,
             relative_path: capture.relative_path,
         })),
+        Err(e) => Err((StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+async fn upload_batch_screenshots(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Json(payload): Json<BatchUploadPayload>,
+) -> Result<Json<BatchUploadResponse>, (StatusCode, String)> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
+    }
+
+    let items: Vec<(String, Option<String>)> = payload
+        .images
+        .into_iter()
+        .map(|item| (item.image, item.filename))
+        .collect();
+
+    match state
+        .manager
+        .save_images_batch_and_paste(&items, payload.session_id.as_deref())
+    {
+        Ok(captures) => {
+            let relative_paths: Vec<String> = captures
+                .iter()
+                .map(|c| c.relative_path.clone())
+                .collect();
+            let paths_string = captures
+                .iter()
+                .map(|c| {
+                    if c.relative_path.contains(' ') {
+                        format!("\"{}\"", c.relative_path)
+                    } else {
+                        c.relative_path.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            Ok(Json(BatchUploadResponse {
+                success: true,
+                count: captures.len(),
+                files: captures,
+                relative_paths,
+                paths_string,
+            }))
+        }
         Err(e) => Err((StatusCode::BAD_REQUEST, e)),
     }
 }
@@ -475,7 +557,7 @@ async fn create_workspace(
     if name.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "Workspace name cannot be empty".into()));
     }
-    let ws = state.manager.add_workspace(name.to_string(), payload.path);
+    let ws = state.manager.add_workspace(name.to_string(), payload.path, payload.kind);
     Ok(Json(ws))
 }
 

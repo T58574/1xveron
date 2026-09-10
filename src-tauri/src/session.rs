@@ -27,6 +27,8 @@ pub struct Workspace {
     pub id: String,
     pub name: String,
     pub path: String,
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +88,7 @@ impl SessionManager {
             path: std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| "C:\\".to_string()),
+            kind: Some("terminal".to_string()),
         };
 
         Self {
@@ -99,7 +102,7 @@ impl SessionManager {
         self.workspaces.read().clone()
     }
 
-    pub fn add_workspace(&self, name: String, path: Option<String>) -> Workspace {
+    pub fn add_workspace(&self, name: String, path: Option<String>, kind: Option<String>) -> Workspace {
         let ws_path = path.unwrap_or_else(|| {
             std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
@@ -109,6 +112,7 @@ impl SessionManager {
             id: Uuid::new_v4().to_string(),
             name,
             path: ws_path,
+            kind: kind.or(Some("terminal".to_string())),
         };
         self.workspaces.write().push(ws.clone());
         ws
@@ -141,6 +145,7 @@ impl SessionManager {
                 path: std::env::current_dir()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|_| "C:\\".to_string()),
+                kind: Some("terminal".to_string()),
             };
             workspaces.push(default_ws);
         }
@@ -164,6 +169,7 @@ impl SessionManager {
         cwd: Option<String>,
         name: Option<String>,
         workspace_id: Option<String>,
+        init_cmd: Option<String>,
         rows: u16,
         cols: u16,
     ) -> Result<SessionInfo, Box<dyn std::error::Error + Send + Sync>> {
@@ -178,21 +184,25 @@ impl SessionManager {
 
         let ws_id = workspace_id.unwrap_or_else(|| "default".to_string());
 
-        let current_dir = cwd.unwrap_or_else(|| {
+        let (current_dir, is_antigravity) = {
             let workspaces = self.workspaces.read();
-            if let Some(ws) = workspaces.iter().find(|w| w.id == ws_id) {
-                if !ws.path.is_empty() {
-                    return ws.path.clone();
-                }
-            }
-            std::env::current_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "C:\\".to_string())
-        });
+            let ws = workspaces.iter().find(|w| w.id == ws_id);
+            let dir = cwd.or_else(|| {
+                ws.and_then(|w| if !w.path.is_empty() { Some(w.path.clone()) } else { None })
+            }).unwrap_or_else(|| {
+                std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "C:\\".to_string())
+            });
+            let is_agy = ws.map(|w| w.kind.as_deref() == Some("antigravity")).unwrap_or(false);
+            (dir, is_agy)
+        };
 
         let id = Uuid::new_v4().to_string();
         let session_name = name.unwrap_or_else(|| {
-            if shell_cmd.contains("powershell") {
+            if is_antigravity {
+                "Antigravity".to_string()
+            } else if shell_cmd.contains("powershell") {
                 "PowerShell".to_string()
             } else if shell_cmd.contains("cmd") {
                 "Command Prompt".to_string()
@@ -228,6 +238,26 @@ impl SessionManager {
             }
         });
 
+        let pty_mutex = Arc::new(Mutex::new(pty));
+
+        // Auto-run init_cmd or 'agy\r' if this is an antigravity workspace
+        let effective_cmd = init_cmd.or_else(|| {
+            if is_antigravity {
+                Some("agy\r".to_string())
+            } else {
+                None
+            }
+        });
+
+        if let Some(cmd) = effective_cmd {
+            let pty_clone = pty_mutex.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+                let mut pty = pty_clone.lock();
+                let _ = pty.write_input(cmd.as_bytes());
+            });
+        }
+
         let session = Arc::new(Session {
             id: id.clone(),
             name: session_name,
@@ -237,7 +267,7 @@ impl SessionManager {
             created_at: chrono::Utc::now().timestamp(),
             history,
             output_tx,
-            pty: Arc::new(Mutex::new(pty)),
+            pty: pty_mutex,
         });
 
         let info = session.to_info();
@@ -337,9 +367,10 @@ impl SessionManager {
         }
     }
 
-    pub fn save_image_and_paste(
+    pub fn save_single_image(
         &self,
         base64_data: &str,
+        custom_name: Option<&str>,
         session_id: Option<&str>,
     ) -> Result<SavedCapture, String> {
         let _ = std::fs::create_dir_all(&self.captures_dir);
@@ -356,9 +387,20 @@ impl SessionManager {
             .decode(clean_base64.trim())
             .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
-        let ext = detect_image_extension(header, &bytes);
+        let detected_ext = detect_image_extension(header, &bytes);
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S_%3f");
-        let filename = format!("screenshot_{}.{}", timestamp, ext);
+
+        let filename = if let Some(orig_name) = custom_name {
+            let clean_orig = sanitize_filename(orig_name);
+            if clean_orig.contains('.') {
+                format!("img_{}_{}", timestamp, clean_orig)
+            } else {
+                format!("img_{}_{}.{}", timestamp, clean_orig, detected_ext)
+            }
+        } else {
+            format!("screenshot_{}.{}", timestamp, detected_ext)
+        };
+
         let target_path = self.captures_dir.join(&filename);
 
         std::fs::write(&target_path, &bytes)
@@ -371,7 +413,6 @@ impl SessionManager {
             .to_string_lossy()
             .to_string();
 
-        // Determine base directory for relative path calculation
         let base_dir = session_id
             .and_then(|sid| self.sessions.read().get(sid).map(|s| PathBuf::from(&s.cwd)))
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
@@ -379,25 +420,66 @@ impl SessionManager {
         let relative_path = calculate_relative_path(&base_dir, &target_path);
 
         info!(
-            "Saved clipboard image: full={}, relative={}",
+            "Saved capture: full={}, relative={}",
             full_path_str, relative_path
         );
-
-        // If a target session is active, write the relative path directly into its stdin
-        if let Some(sid) = session_id {
-            // Write formatted path surrounded by quotes if it contains spaces
-            let formatted = if relative_path.contains(' ') {
-                format!("\"{}\"", relative_path)
-            } else {
-                relative_path.clone()
-            };
-            let _ = self.write_input(sid, formatted.as_bytes());
-        }
 
         Ok(SavedCapture {
             file_path: full_path_str,
             relative_path,
         })
+    }
+
+    pub fn save_image_and_paste(
+        &self,
+        base64_data: &str,
+        custom_name: Option<&str>,
+        session_id: Option<&str>,
+    ) -> Result<SavedCapture, String> {
+        let capture = self.save_single_image(base64_data, custom_name, session_id)?;
+
+        if let Some(sid) = session_id {
+            let formatted = if capture.relative_path.contains(' ') {
+                format!("\"{}\"", capture.relative_path)
+            } else {
+                capture.relative_path.clone()
+            };
+            let _ = self.write_input(sid, formatted.as_bytes());
+        }
+
+        Ok(capture)
+    }
+
+    pub fn save_images_batch_and_paste(
+        &self,
+        items: &[(String, Option<String>)],
+        session_id: Option<&str>,
+    ) -> Result<Vec<SavedCapture>, String> {
+        let mut captures = Vec::new();
+
+        for (base64_data, orig_name) in items {
+            let cap = self.save_single_image(base64_data, orig_name.as_deref(), session_id)?;
+            captures.push(cap);
+        }
+
+        if let Some(sid) = session_id {
+            if !captures.is_empty() {
+                let paths: Vec<String> = captures
+                    .iter()
+                    .map(|c| {
+                        if c.relative_path.contains(' ') {
+                            format!("\"{}\"", c.relative_path)
+                        } else {
+                            c.relative_path.clone()
+                        }
+                    })
+                    .collect();
+                let joined = paths.join(" ");
+                let _ = self.write_input(sid, joined.as_bytes());
+            }
+        }
+
+        Ok(captures)
     }
 
     pub fn get_captures_info(&self) -> (usize, u64) {
@@ -543,6 +625,30 @@ fn detect_image_extension(header: &str, bytes: &[u8]) -> &'static str {
     }
 }
 
+fn sanitize_filename(name: &str) -> String {
+    let file_name = std::path::Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(name);
+
+    let clean: String = file_name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let trimmed = clean.trim_matches(|c| c == '_' || c == '.');
+    if trimmed.is_empty() {
+        "image".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -581,6 +687,13 @@ mod tests {
         assert_eq!(detect_image_extension("", b"BM..."), "bmp");
         assert_eq!(detect_image_extension("", b"<svg viewBox=\"0 0 100 100\"></svg>"), "svg");
         assert_eq!(detect_image_extension("data:image/webp;base64", b"unknown bytes"), "webp");
+    }
+
+    #[test]
+    fn test_sanitize_filename() {
+        assert_eq!(sanitize_filename("my architecture (v2).png"), "my_architecture__v2_.png");
+        assert_eq!(sanitize_filename("../../../danger.png"), "danger.png");
+        assert_eq!(sanitize_filename("___"), "image");
     }
 }
 

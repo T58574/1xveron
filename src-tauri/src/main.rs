@@ -48,6 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(initial_cwd),
                 Some("PowerShell 1".into()),
                 Some("default".into()),
+                None,
                 24,
                 80,
             );

@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { Maximize2, Minimize2, X, Plus, Terminal as TermIcon, Image, Folder, Check } from 'lucide-react';
+import { Maximize2, Minimize2, X, Plus, Terminal as TermIcon, Image, ImagePlus, Folder, Check } from 'lucide-react';
 import { SessionInfo } from '../types';
-import { getWsUrl, uploadScreenshot } from '../services/api';
+import { getWsUrl, uploadScreenshot, uploadBatchScreenshots } from '../services/api';
 
 interface TerminalPaneProps {
   session: SessionInfo | undefined;
@@ -39,6 +39,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const wsRef = useRef<WebSocket | null>(null);
   const isUploadingRef = useRef(false);
   const lastPasteHandledTimeRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCopiedPath, setIsCopiedPath] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState(session?.name || '');
@@ -352,6 +353,51 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     }
   };
 
+  const handleOpenFileDialog = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !session) return;
+
+    onToast(`Processing ${files.length} image${files.length > 1 ? 's' : ''}...`);
+
+    try {
+      const items: { image: string; filename: string }[] = await Promise.all(
+        Array.from(files).map((file) => {
+          return new Promise<{ image: string; filename: string }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                image: reader.result as string,
+                filename: file.name,
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+        })
+      );
+
+      const res = await uploadBatchScreenshots(items, session.id);
+      onToast(`Attached ${res.count} image${res.count > 1 ? 's' : ''}`);
+
+      try {
+        await navigator.clipboard.writeText(res.paths_string);
+      } catch {}
+
+      onCaptureSaved?.();
+    } catch (err) {
+      console.error('Failed to upload batch images', err);
+      onToast('Failed to upload images');
+    }
+  };
+
   const copyCwd = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (session?.cwd) {
@@ -473,6 +519,16 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             <Image className="w-3.5 h-3.5" />
           </button>
 
+          {/* Input images from Explorer */}
+          <button
+            onClick={handleOpenFileDialog}
+            title="Input images (Select multiple from Explorer)"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-colors"
+          >
+            <ImagePlus className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden xl:inline text-[11px] font-medium">Input images</span>
+          </button>
+
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -507,6 +563,16 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Hidden file input for Explorer multi-image selection */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        multiple
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
 
       {/* Terminal Viewport */}
       <div className="flex-1 relative w-full h-full overflow-hidden p-1">

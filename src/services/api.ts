@@ -94,6 +94,7 @@ export async function createSession(params: {
   cwd?: string;
   name?: string;
   workspace_id?: string;
+  init_cmd?: string;
   rows?: number;
   cols?: number;
 }): Promise<SessionInfo> {
@@ -127,7 +128,8 @@ export async function resizeSession(id: string, rows: number, cols: number): Pro
 
 export async function uploadScreenshot(
   base64Data: string,
-  sessionId?: string
+  sessionId?: string,
+  filename?: string
 ): Promise<{ success: boolean; file_path: string; relative_path: string }> {
   const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
   const res = await fetch(`${API_BASE}/api/upload${tokenParam}`, {
@@ -135,10 +137,34 @@ export async function uploadScreenshot(
     headers: getHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       image: base64Data,
+      filename,
       session_id: sessionId,
     }),
   });
   if (!res.ok) throw new Error('Failed to upload image');
+  return res.json();
+}
+
+export async function uploadBatchScreenshots(
+  items: { image: string; filename?: string }[],
+  sessionId?: string
+): Promise<{
+  success: boolean;
+  count: number;
+  files: { file_path: string; relative_path: string }[];
+  relative_paths: string[];
+  paths_string: string;
+}> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  const res = await fetch(`${API_BASE}/api/upload/batch${tokenParam}`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      images: items,
+      session_id: sessionId,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to upload batch images');
   return res.json();
 }
 
@@ -154,6 +180,7 @@ export async function fetchWorkspaces(): Promise<Workspace[]> {
 export async function createWorkspace(params: {
   name: string;
   path?: string;
+  kind?: 'antigravity' | 'terminal';
 }): Promise<Workspace> {
   const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
   const res = await fetch(`${API_BASE}/api/workspaces${tokenParam}`, {
