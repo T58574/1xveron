@@ -113,6 +113,62 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       fitAddon.fit();
     } catch {}
 
+    // Key handler: Ctrl+Enter (multiline newline), Ctrl+C (copy when selected), Ctrl+Shift+C/V
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.type === 'keydown') {
+        // 1. Ctrl+Enter or Shift+Enter -> Newline (\n) for multi-line prompts (agy, Claude CLI, REPL)
+        if (event.key === 'Enter' && (event.ctrlKey || event.shiftKey)) {
+          event.preventDefault();
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'input', data: '\n' }));
+          }
+          return false;
+        }
+
+        // 2. Ctrl+C with active selection -> Copy text to clipboard without sending SIGINT
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          event.key.toLowerCase() === 'c' &&
+          !event.altKey &&
+          !event.shiftKey
+        ) {
+          if (term.hasSelection()) {
+            const selection = term.getSelection();
+            if (selection) {
+              navigator.clipboard.writeText(selection);
+              return false; // Prevent sending SIGINT when copying!
+            }
+          }
+          return true; // No selection -> let Ctrl+C pass through to send SIGINT
+        }
+
+        // 3. Ctrl+Shift+C -> Always copy selection
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'c') {
+          if (term.hasSelection()) {
+            const selection = term.getSelection();
+            if (selection) {
+              navigator.clipboard.writeText(selection);
+            }
+          }
+          return false;
+        }
+
+        // 4. Ctrl+Shift+V -> Always paste from clipboard
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'v') {
+          navigator.clipboard
+            .readText()
+            .then((text) => {
+              if (text && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'input', data: text }));
+              }
+            })
+            .catch(() => {});
+          return false;
+        }
+      }
+      return true;
+    });
+
     try {
       const webglAddon = new WebglAddon();
       webglAddon.onContextLoss(() => webglAddon.dispose());
@@ -261,6 +317,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     if (!session) return;
 
     const handleNativePaste = async (event: ClipboardEvent) => {
+      // 1. Check for image first
       const imageFile = extractImageFile(event.clipboardData);
       if (imageFile) {
         event.preventDefault();
@@ -268,6 +325,25 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         event.stopImmediatePropagation();
         lastPasteHandledTimeRef.current = Date.now();
         await processAndUploadImage(imageFile);
+        return;
+      }
+
+      // 2. Check for text (Ctrl+V, Win+V, context menu)
+      const text =
+        event.clipboardData?.getData('text/plain') ||
+        event.clipboardData?.getData('text');
+      if (text) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        lastPasteHandledTimeRef.current = Date.now();
+
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+        } else if (termRef.current) {
+          termRef.current.paste(text);
+        }
+        return;
       }
     };
 
@@ -307,6 +383,24 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         event.stopImmediatePropagation();
         lastPasteHandledTimeRef.current = Date.now();
         await processAndUploadImage(imageFile);
+        return;
+      }
+
+      const text =
+        event.clipboardData?.getData('text/plain') ||
+        event.clipboardData?.getData('text');
+      if (text) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        lastPasteHandledTimeRef.current = Date.now();
+
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+        } else if (termRef.current) {
+          termRef.current.paste(text);
+        }
+        return;
       }
     };
 
@@ -318,7 +412,15 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       if (isPasteKey || isShiftInsert) {
         setTimeout(async () => {
           if (Date.now() - lastPasteHandledTimeRef.current > 80) {
-            await tryReadClipboardImage();
+            const handled = await tryReadClipboardImage();
+            if (!handled) {
+              try {
+                const text = await navigator.clipboard.readText();
+                if (text && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+                }
+              } catch {}
+            }
           }
         }, 50);
       }
@@ -350,6 +452,20 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       event.preventDefault();
       event.stopPropagation();
       await processAndUploadImage(imageFile);
+      return;
+    }
+
+    const text =
+      dataTransfer?.getData('text/plain') ||
+      dataTransfer?.getData('text');
+    if (text && session) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+      } else if (termRef.current) {
+        termRef.current.paste(text);
+      }
     }
   };
 
