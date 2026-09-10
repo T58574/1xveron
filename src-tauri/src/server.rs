@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
-use local_ip_address::local_ip;
+use local_ip_address::{list_afinet_netifas, local_ip};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,6 +29,12 @@ pub struct AppState {
     pub auth_token: String,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct NetworkInterface {
+    pub name: String,
+    pub ip: String,
+}
+
 #[derive(Serialize)]
 pub struct SystemInfo {
     pub local_ip: String,
@@ -37,6 +43,7 @@ pub struct SystemInfo {
     pub hostname: String,
     pub auth_token: String,
     pub available_shells: Vec<ShellOption>,
+    pub interfaces: Vec<NetworkInterface>,
 }
 
 #[derive(Serialize)]
@@ -240,10 +247,103 @@ async fn verify_token(
     Json(serde_json::json!({ "valid": valid }))
 }
 
+fn score_ip(name: &str, ip: &std::net::Ipv4Addr) -> i32 {
+    if ip.is_loopback() || ip.is_unspecified() {
+        return -1000;
+    }
+    if ip.is_link_local() {
+        return -500;
+    }
+
+    let octets = ip.octets();
+    let name_lower = name.to_lowercase();
+
+    let is_virtual = name_lower.contains("vethernet")
+        || name_lower.contains("wsl")
+        || name_lower.contains("docker")
+        || name_lower.contains("xray")
+        || name_lower.contains("happ-")
+        || name_lower.contains("tun")
+        || name_lower.contains("tap")
+        || name_lower.contains("vpn")
+        || name_lower.contains("wireguard")
+        || name_lower.contains("tailscale")
+        || name_lower.contains("zerotier")
+        || name_lower.contains("hyper-v")
+        || name_lower.contains("vmware")
+        || name_lower.contains("virtualbox")
+        || name_lower.contains("pseudo");
+
+    let is_likely_wifi_or_ethernet = name_lower.contains("wi-fi")
+        || name_lower.contains("wifi")
+        || name_lower.contains("wlan")
+        || name_lower.contains("беспроводн")
+        || name_lower.contains("ethernet")
+        || name_lower.contains("сеть");
+
+    let is_192_168 = octets[0] == 192 && octets[1] == 168;
+    let is_10 = octets[0] == 10;
+    let is_172 = octets[0] == 172 && (16..=31).contains(&octets[1]);
+
+    let mut score = 100;
+
+    if is_likely_wifi_or_ethernet {
+        score += 500;
+    }
+    if is_virtual {
+        score -= 600;
+    }
+
+    if is_192_168 {
+        score += 400;
+    } else if is_10 {
+        score += 300;
+    } else if is_172 {
+        score += 100;
+    }
+
+    score
+}
+
+pub fn get_network_interfaces() -> (String, Vec<NetworkInterface>) {
+    let mut candidates: Vec<(String, std::net::Ipv4Addr, i32)> = Vec::new();
+
+    if let Ok(ifaces) = list_afinet_netifas() {
+        for (name, ip) in ifaces {
+            if let std::net::IpAddr::V4(ipv4) = ip {
+                let score = score_ip(&name, &ipv4);
+                candidates.push((name, ipv4, score));
+            }
+        }
+    }
+
+    // Sort by score descending (highest priority first)
+    candidates.sort_by(|a, b| b.2.cmp(&a.2));
+
+    let best_ip = candidates
+        .first()
+        .map(|(_, ip, _)| ip.to_string())
+        .unwrap_or_else(|| {
+            local_ip()
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|_| "127.0.0.1".to_string())
+        });
+
+    // Exclude loopback and unspecified addresses from interfaces list for the UI
+    let interfaces = candidates
+        .into_iter()
+        .filter(|(_, ip, _)| !ip.is_loopback() && !ip.is_unspecified())
+        .map(|(name, ip, _)| NetworkInterface {
+            name,
+            ip: ip.to_string(),
+        })
+        .collect();
+
+    (best_ip, interfaces)
+}
+
 async fn get_system_info(State(state): State<AppState>) -> Json<SystemInfo> {
-    let ip = local_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
+    let (ip, interfaces) = get_network_interfaces();
 
     let lan_url = format!("http://{}:{}?token={}", ip, state.port, state.auth_token);
     let hostname = hostname::get()
@@ -302,6 +402,7 @@ async fn get_system_info(State(state): State<AppState>) -> Json<SystemInfo> {
         hostname,
         auth_token: state.auth_token,
         available_shells: shells,
+        interfaces,
     })
 }
 
