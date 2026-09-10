@@ -21,6 +21,11 @@ export interface ShellOption {
   icon: string;
 }
 
+export interface NetworkInterface {
+  name: string;
+  ip: string;
+}
+
 export interface SystemInfo {
   local_ip: string;
   port: number;
@@ -28,6 +33,7 @@ export interface SystemInfo {
   hostname: string;
   auth_token: string;
   available_shells: ShellOption[];
+  interfaces?: NetworkInterface[];
 }
 
 export interface CapturesInfo {

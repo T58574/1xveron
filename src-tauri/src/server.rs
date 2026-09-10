@@ -790,3 +790,34 @@ async fn handle_terminal_socket(
     };
     info!("WebSocket disconnected for session: {}", session_id);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn test_score_ip_prioritizes_wifi_over_vpn() {
+        let wifi_name = "Беспроводная сеть";
+        let wifi_ip = Ipv4Addr::new(192, 168, 4, 39);
+
+        let xray_name = "happ-xray";
+        let xray_ip = Ipv4Addr::new(172, 19, 0, 1);
+
+        let wifi_score = score_ip(wifi_name, &wifi_ip);
+        let xray_score = score_ip(xray_name, &xray_ip);
+
+        assert!(wifi_score > xray_score, "WiFi score ({}) should be higher than VPN/Xray ({})", wifi_score, xray_score);
+    }
+
+    #[test]
+    fn test_get_network_interfaces_finds_best_ip() {
+        let (best_ip, interfaces) = get_network_interfaces();
+        println!("Best IP: {}", best_ip);
+        for iface in &interfaces {
+            println!("Interface: {} -> {}", iface.name, iface.ip);
+        }
+        assert!(!best_ip.is_empty());
+        assert_ne!(best_ip, "127.0.0.1");
+    }
+}
