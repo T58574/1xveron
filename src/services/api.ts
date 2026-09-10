@@ -151,6 +151,39 @@ export async function fetchWorkspaces(): Promise<Workspace[]> {
   return res.json();
 }
 
+export async function createWorkspace(params: {
+  name: string;
+  path?: string;
+}): Promise<Workspace> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  const res = await fetch(`${API_BASE}/api/workspaces${tokenParam}`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error('Failed to create workspace');
+  return res.json();
+}
+
+export async function deleteWorkspace(id: string): Promise<void> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  const res = await fetch(`${API_BASE}/api/workspaces/${id}${tokenParam}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete workspace');
+}
+
+export async function renameWorkspace(id: string, name: string): Promise<void> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  const res = await fetch(`${API_BASE}/api/workspaces/${id}${tokenParam}`, {
+    method: 'PATCH',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error('Failed to rename workspace');
+}
+
 export async function fetchCapturesInfo(): Promise<CapturesInfo> {
   const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
   const res = await fetch(`${API_BASE}/api/captures${tokenParam}`, {

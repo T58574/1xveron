@@ -4,6 +4,9 @@ import {
   fetchSessions,
   fetchSystemInfo,
   fetchWorkspaces,
+  createWorkspace,
+  deleteWorkspace,
+  renameWorkspace,
   fetchCapturesInfo,
   clearCaptures,
   openCapturesFolder,
@@ -20,6 +23,7 @@ import { TopBar } from './components/TopBar';
 import { TerminalPane } from './components/TerminalPane';
 import { RemoteModal } from './components/RemoteModal';
 import { QuickScriptsModal } from './components/QuickScriptsModal';
+import { CreateWorkspaceModal } from './components/CreateWorkspaceModal';
 import { MobileView } from './components/MobileView';
 import { KeyRound, ShieldAlert } from 'lucide-react';
 
@@ -29,29 +33,23 @@ export const App: React.FC = () => {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [capturesInfo, setCapturesInfo] = useState<CapturesInfo | null>(null);
 
-  // Slot-to-Session Persistence: 6 fixed slots
-  const [slots, setSlots] = useState<(string | null)[]>([null, null, null, null, null, null]);
-  const [activePaneIndex, setActivePaneIndex] = useState<number>(0);
-
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => {
-    const saved = localStorage.getItem('veron_layout_mode');
-    if (saved) {
-      const parsed = parseInt(saved, 10);
-      if (parsed >= 1 && parsed <= 6) return parsed as LayoutMode;
-    }
-    return 1;
+  // Active Workspace Group State
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(() => {
+    return localStorage.getItem('veron_active_workspace') || 'default';
   });
 
-  const handleSetLayoutMode = (mode: LayoutMode) => {
-    setLayoutMode(mode);
-    localStorage.setItem('veron_layout_mode', String(mode));
-  };
+  // Slot-to-Session Persistence per Workspace: 6 fixed slots per workspace
+  const [workspaceSlots, setWorkspaceSlots] = useState<Record<string, (string | null)[]>>({});
+  // Layout Mode (1-6) per Workspace
+  const [workspaceLayouts, setWorkspaceLayouts] = useState<Record<string, LayoutMode>>({});
 
+  const [activePaneIndex, setActivePaneIndex] = useState<number>(0);
   const [maximizedPaneIndex, setMaximizedPaneIndex] = useState<number | null>(null);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRemoteModalOpen, setIsRemoteModalOpen] = useState(false);
   const [isQuickScriptsOpen, setIsQuickScriptsOpen] = useState(false);
+  const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [toast, setToast] = useState<string | null>(null);
 
@@ -61,6 +59,34 @@ export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [pinInput, setPinInput] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Derived Active Workspace & Sessions
+  const activeWorkspace =
+    workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
+  const activeWsId = activeWorkspace?.id || 'default';
+
+  const activeWorkspaceSessions = sessions.filter(
+    (s) => s.workspace_id === activeWsId || (!s.workspace_id && activeWsId === 'default')
+  );
+
+  const currentSlots = workspaceSlots[activeWsId] || [null, null, null, null, null, null];
+  const currentLayoutMode: LayoutMode =
+    workspaceLayouts[activeWsId] ||
+    (Math.min(Math.max(activeWorkspaceSessions.length, 1), 6) as LayoutMode);
+
+  const handleSetLayoutMode = (mode: LayoutMode) => {
+    setWorkspaceLayouts((prev) => ({
+      ...prev,
+      [activeWsId]: mode,
+    }));
+  };
+
+  const handleSelectWorkspace = (wsId: string) => {
+    setActiveWorkspaceId(wsId);
+    localStorage.setItem('veron_active_workspace', wsId);
+    setMaximizedPaneIndex(null);
+    setActivePaneIndex(0);
+  };
 
   // Resize listener for mobile mode
   useEffect(() => {
@@ -99,6 +125,53 @@ export const App: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // Helper to synchronize slots with incoming sessions for a workspace
+  const syncWorkspaceSlots = (
+    currentWorkspaces: Workspace[],
+    allSessions: SessionInfo[]
+  ) => {
+    setWorkspaceSlots((prev) => {
+      const next: Record<string, (string | null)[]> = { ...prev };
+
+      for (const ws of currentWorkspaces) {
+        const wsSessions = allSessions.filter(
+          (s) => s.workspace_id === ws.id || (!s.workspace_id && ws.id === 'default')
+        );
+        const existingSlots = next[ws.id]
+          ? [...next[ws.id]]
+          : [null, null, null, null, null, null];
+
+        // 1. Remove session IDs that no longer exist
+        for (let i = 0; i < 6; i++) {
+          if (existingSlots[i] && !wsSessions.some((s) => s.id === existingSlots[i])) {
+            existingSlots[i] = null;
+          }
+        }
+
+        // 2. Add unassigned sessions to empty slots
+        let wsIdx = 0;
+        for (let i = 0; i < 6; i++) {
+          if (!existingSlots[i] && wsIdx < wsSessions.length) {
+            const candidate = wsSessions[wsIdx];
+            if (!existingSlots.includes(candidate.id)) {
+              existingSlots[i] = candidate.id;
+            }
+            wsIdx++;
+          }
+        }
+
+        // Ensure slot 0 has first session if available
+        if (!existingSlots[0] && wsSessions.length > 0) {
+          existingSlots[0] = wsSessions[0].id;
+        }
+
+        next[ws.id] = existingSlots;
+      }
+
+      return next;
+    });
+  };
+
   // Initial load
   useEffect(() => {
     const loadData = async () => {
@@ -123,26 +196,19 @@ export const App: React.FC = () => {
           fetchCapturesInfo().catch(() => null),
         ]);
 
-        if (ws) setWorkspaces(ws);
+        if (ws && ws.length > 0) {
+          setWorkspaces(ws);
+          // Verify active workspace exists
+          if (!ws.some((w) => w.id === activeWorkspaceId)) {
+            setActiveWorkspaceId(ws[0].id);
+          }
+        }
         if (caps) setCapturesInfo(caps);
-        if (sess && sess.length > 0) {
+        if (sess) {
           setSessions(sess);
-          setSlots((prev) => {
-            const next = [...prev];
-            let sIdx = 0;
-            for (let i = 0; i < 6; i++) {
-              if (!next[i] && sIdx < sess.length) {
-                if (!next.includes(sess[sIdx].id)) {
-                  next[i] = sess[sIdx].id;
-                }
-                sIdx++;
-              }
-            }
-            if (!next[0] && sess.length > 0) {
-              next[0] = sess[0].id;
-            }
-            return next;
-          });
+          if (ws) {
+            syncWorkspaceSlots(ws, sess);
+          }
         }
       } catch (e) {
         console.error('Initial load error:', e);
@@ -153,20 +219,21 @@ export const App: React.FC = () => {
 
     const interval = setInterval(async () => {
       try {
-        const sess = await fetchSessions();
-        if (sess && sess.length > 0) {
-          setSessions(sess);
-          setSlots((prev) => {
-            if (!prev[0] && sess.length > 0) {
-              const next = [...prev];
-              next[0] = sess[0].id;
-              return next;
-            }
-            return prev;
-          });
+        const [sess, caps, ws] = await Promise.all([
+          fetchSessions().catch(() => null),
+          fetchCapturesInfo().catch(() => null),
+          fetchWorkspaces().catch(() => null),
+        ]);
+        if (ws && ws.length > 0) {
+          setWorkspaces(ws);
         }
-        const caps = await fetchCapturesInfo();
-        setCapturesInfo(caps);
+        if (sess) {
+          setSessions(sess);
+          if (ws) {
+            syncWorkspaceSlots(ws, sess);
+          }
+        }
+        if (caps) setCapturesInfo(caps);
       } catch {}
     }, 3000);
 
@@ -189,25 +256,47 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleCreateSession = async (shell?: string) => {
+  const handleCreateSession = async (shell?: string, wsId?: string) => {
+    const targetWsId = wsId || activeWsId;
+    const targetWs = workspaces.find((w) => w.id === targetWsId) || activeWorkspace;
+    const targetSessions = sessions.filter(
+      (s) => s.workspace_id === targetWsId || (!s.workspace_id && targetWsId === 'default')
+    );
+
+    if (targetSessions.length >= 6) {
+      showToast('Workspace limit reached (max 6 windows per group)');
+      return;
+    }
+
     try {
-      const newSession = await createSession({ shell });
+      const newSession = await createSession({
+        shell,
+        workspace_id: targetWsId,
+        cwd: targetWs?.path,
+      });
+
       setSessions((prev) => [...prev, newSession]);
 
-      // Assign new session to the active pane if empty, or first available slot
-      setSlots((prev) => {
-        const next = [...prev];
-        if (!next[activePaneIndex]) {
-          next[activePaneIndex] = newSession.id;
-        } else {
-          const firstEmpty = next.findIndex((s) => s === null);
-          if (firstEmpty !== -1) {
-            next[firstEmpty] = newSession.id;
-            setActivePaneIndex(firstEmpty);
+      setWorkspaceSlots((prev) => {
+        const existing = prev[targetWsId]
+          ? [...prev[targetWsId]]
+          : [null, null, null, null, null, null];
+        const emptyIdx = existing.findIndex((s) => s === null);
+        if (emptyIdx !== -1) {
+          existing[emptyIdx] = newSession.id;
+          if (targetWsId === activeWsId) {
+            setActivePaneIndex(emptyIdx);
           }
         }
-        return next;
+        return { ...prev, [targetWsId]: existing };
       });
+
+      // Auto-bump layout mode if creating in active workspace
+      if (targetWsId === activeWsId) {
+        const newCount = targetSessions.length + 1;
+        const targetMode = Math.min(Math.max(currentLayoutMode, newCount), 6) as LayoutMode;
+        setWorkspaceLayouts((prev) => ({ ...prev, [targetWsId]: targetMode }));
+      }
 
       showToast(`Started ${newSession.name}`);
     } catch (e) {
@@ -215,12 +304,86 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleCreateWorkspace = async (name: string, path?: string, shell?: string) => {
+    try {
+      const newWs = await createWorkspace({ name, path });
+      setWorkspaces((prev) => [...prev, newWs]);
+
+      // Auto-launch initial session in this new workspace group
+      const firstSession = await createSession({
+        shell,
+        workspace_id: newWs.id,
+        cwd: path,
+      });
+
+      setSessions((prev) => [...prev, firstSession]);
+
+      setWorkspaceSlots((prev) => ({
+        ...prev,
+        [newWs.id]: [firstSession.id, null, null, null, null, null],
+      }));
+      setWorkspaceLayouts((prev) => ({
+        ...prev,
+        [newWs.id]: 1,
+      }));
+
+      handleSelectWorkspace(newWs.id);
+      showToast(`Created workspace "${newWs.name}"`);
+    } catch (e) {
+      showToast('Failed to create workspace');
+    }
+  };
+
+  const handleDeleteWorkspace = async (id: string) => {
+    try {
+      await deleteWorkspace(id);
+      setWorkspaces((prev) => prev.filter((w) => w.id !== id));
+      setSessions((prev) => prev.filter((s) => s.workspace_id !== id));
+      setWorkspaceSlots((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setWorkspaceLayouts((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+
+      if (activeWorkspaceId === id) {
+        const remaining = workspaces.filter((w) => w.id !== id);
+        const fallbackId = remaining[0]?.id || 'default';
+        handleSelectWorkspace(fallbackId);
+      }
+      showToast('Workspace deleted');
+    } catch {
+      showToast('Failed to delete workspace');
+    }
+  };
+
+  const handleRenameWorkspace = async (id: string, newName: string) => {
+    try {
+      await renameWorkspace(id, newName);
+      setWorkspaces((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, name: newName } : w))
+      );
+      showToast(`Renamed workspace to "${newName}"`);
+    } catch {
+      showToast('Failed to rename workspace');
+    }
+  };
+
   const handleCloseSession = async (id: string) => {
     try {
       await closeSession(id);
       setSessions((prev) => prev.filter((s) => s.id !== id));
-      // Set slot to null without shifting other slots
-      setSlots((prev) => prev.map((sid) => (sid === id ? null : sid)));
+      setWorkspaceSlots((prev) => {
+        const next = { ...prev };
+        for (const wsId in next) {
+          next[wsId] = next[wsId].map((sid) => (sid === id ? null : sid));
+        }
+        return next;
+      });
       showToast('Session closed');
     } catch {
       showToast('Failed to close session');
@@ -246,20 +409,21 @@ export const App: React.FC = () => {
     }
   };
 
-  // Helper to get session for a slot index
+  // Helper to get session for a slot index in active workspace
   const getSessionForSlot = (idx: number): SessionInfo | undefined => {
-    const sid = slots[idx];
+    const sid = currentSlots[idx];
     if (!sid) return undefined;
     return sessions.find((s) => s.id === sid);
   };
 
   // Active session and ID in the currently focused active pane
-  const activeSession = getSessionForSlot(activePaneIndex) || sessions[0] || null;
+  const activeSession =
+    getSessionForSlot(activePaneIndex) || activeWorkspaceSessions[0] || null;
   const activeSessionId = activeSession?.id || null;
 
   const handleExecuteScript = async (command: string, autoExecute: boolean = true) => {
     if (!activeSessionId) {
-      showToast('No active terminal session to execute script');
+      showToast('No active terminal session in this workspace');
       return;
     }
     const dataToSend = autoExecute ? `${command}\r` : command;
@@ -285,11 +449,35 @@ export const App: React.FC = () => {
   };
 
   const handleSplitPane = async () => {
-    if (layoutMode < 6) {
-      const nextMode = (layoutMode + 1) as LayoutMode;
-      handleSetLayoutMode(nextMode);
+    if (activeWorkspaceSessions.length >= 6) {
+      showToast('Workspace limit reached (max 6 windows per group)');
+      return;
+    }
+    if (currentLayoutMode < 6) {
+      handleSetLayoutMode((currentLayoutMode + 1) as LayoutMode);
     }
     await handleCreateSession();
+  };
+
+  const handleSelectSessionFromSidebar = (sessionId: string, wsId: string) => {
+    if (wsId !== activeWsId) {
+      handleSelectWorkspace(wsId);
+    }
+    const targetSlots = workspaceSlots[wsId] || [];
+    const slotIdx = targetSlots.findIndex((sid) => sid === sessionId);
+    if (slotIdx !== -1 && slotIdx < currentLayoutMode) {
+      setActivePaneIndex(slotIdx);
+    } else if (slotIdx !== -1) {
+      const neededMode = Math.min(slotIdx + 1, 6) as LayoutMode;
+      handleSetLayoutMode(neededMode);
+      setActivePaneIndex(slotIdx);
+    } else {
+      setWorkspaceSlots((prev) => {
+        const existing = prev[wsId] ? [...prev[wsId]] : [null, null, null, null, null, null];
+        existing[activePaneIndex] = sessionId;
+        return { ...prev, [wsId]: existing };
+      });
+    }
   };
 
   // If unauthenticated (e.g. mobile client connecting over LAN without token)
@@ -341,17 +529,18 @@ export const App: React.FC = () => {
   if (isMobile) {
     return (
       <MobileView
-        sessions={sessions}
+        sessions={activeWorkspaceSessions}
         activeSessionId={activeSessionId}
         onSelectSession={(id) => {
-          // Set in slot 0 for mobile
-          setSlots((prev) => {
-            const next = [...prev];
-            next[0] = id;
-            return next;
+          setWorkspaceSlots((prev) => {
+            const existing = prev[activeWsId]
+              ? [...prev[activeWsId]]
+              : [null, null, null, null, null, null];
+            existing[0] = id;
+            return { ...prev, [activeWsId]: existing };
           });
         }}
-        onCreateSession={handleCreateSession}
+        onCreateSession={(shell) => handleCreateSession(shell, activeWsId)}
         theme={theme}
       />
     );
@@ -362,7 +551,7 @@ export const App: React.FC = () => {
     const s = getSessionForSlot(idx);
     return (
       <TerminalPane
-        key={idx}
+        key={`${activeWsId}-pane-${idx}-${s?.id || 'empty'}`}
         session={s}
         isActive={activePaneIndex === idx}
         isMaximized={maximizedPaneIndex === idx}
@@ -377,10 +566,6 @@ export const App: React.FC = () => {
         }}
         theme={theme}
         onToast={showToast}
-        onCaptureSaved={async () => {
-          const caps = await fetchCapturesInfo().catch(() => null);
-          if (caps) setCapturesInfo(caps);
-        }}
       />
     );
   };
@@ -391,7 +576,7 @@ export const App: React.FC = () => {
       return renderPane(maximizedPaneIndex);
     }
 
-    switch (layoutMode) {
+    switch (currentLayoutMode) {
       case 1:
         return (
           <div className="flex-1 flex w-full h-full min-h-0 min-w-0">
@@ -407,7 +592,7 @@ export const App: React.FC = () => {
         );
 
       case 3:
-        // BridgeMind style: 1 tall left + 2 stacked right
+        // 1 tall left + 2 stacked right
         return (
           <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0">
             <div className="flex-1 flex min-w-0 min-h-0">
@@ -458,32 +643,24 @@ export const App: React.FC = () => {
         isDark ? 'bg-[#090a0d] text-[#f1f5f9]' : 'bg-slate-100 text-slate-900'
       }`}
     >
-      {/* Left Sidebar (BridgeMind & Warp Session Manager) */}
+      {/* Left Sidebar (Workspaces & Session Groupings) */}
       <Sidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
         workspaces={workspaces}
+        activeWorkspaceId={activeWsId}
+        onSelectWorkspace={handleSelectWorkspace}
+        onOpenCreateWorkspaceModal={() => setIsCreateWorkspaceModalOpen(true)}
+        onDeleteWorkspace={handleDeleteWorkspace}
+        onRenameWorkspace={handleRenameWorkspace}
         systemInfo={systemInfo}
         capturesInfo={capturesInfo}
         onClearCaptures={handleClearCaptures}
         onOpenCapturesFolder={handleOpenCapturesFolder}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-        onSelectSession={(id) => {
-          // If clicked session is already in one of the active slots, focus it!
-          const slotIdx = slots.findIndex((sid, i) => sid === id && i < layoutMode);
-          if (slotIdx !== -1) {
-            setActivePaneIndex(slotIdx);
-          } else {
-            // Otherwise place it into the currently focused active pane
-            setSlots((prev) => {
-              const next = [...prev];
-              next[activePaneIndex] = id;
-              return next;
-            });
-          }
-        }}
-        onCreateSession={handleCreateSession}
+        onSelectSession={handleSelectSessionFromSidebar}
+        onCreateSession={(shell, wsId) => handleCreateSession(shell, wsId)}
         onCloseSession={handleCloseSession}
         onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
         theme={theme}
@@ -492,23 +669,36 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-        {/* Top Bar with 1-6 layout switcher */}
+        {/* Top Bar with Active Workspace switcher and 1-6 layout buttons */}
         <TopBar
-          layoutMode={layoutMode}
+          layoutMode={currentLayoutMode}
           onChangeLayout={handleSetLayoutMode}
           systemInfo={systemInfo}
+          workspaces={workspaces}
+          activeWorkspace={activeWorkspace}
+          activeWorkspaceSessionCount={activeWorkspaceSessions.length}
+          onSelectWorkspace={handleSelectWorkspace}
+          onOpenCreateWorkspaceModal={() => setIsCreateWorkspaceModalOpen(true)}
           onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
           onOpenQuickScripts={() => setIsQuickScriptsOpen(true)}
-          onCreateSession={handleCreateSession}
+          onCreateSession={(shell) => handleCreateSession(shell, activeWsId)}
           theme={theme}
           onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         />
 
-        {/* Dynamic Card Grid (1 to 6 Panes) */}
+        {/* Dynamic Card Grid for Active Workspace (1 to 6 Panes) */}
         <main className="flex-1 flex p-2 min-h-0 min-w-0 overflow-hidden">
           {renderGridLayout()}
         </main>
       </div>
+
+      {/* Create Workspace Modal */}
+      <CreateWorkspaceModal
+        isOpen={isCreateWorkspaceModalOpen}
+        onClose={() => setIsCreateWorkspaceModalOpen(false)}
+        onCreate={handleCreateWorkspace}
+        availableShells={systemInfo?.available_shells}
+      />
 
       {/* Local Wi-Fi Remote Modal */}
       <RemoteModal
@@ -534,4 +724,5 @@ export const App: React.FC = () => {
     </div>
   );
 };
+
 export default App;

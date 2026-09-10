@@ -2,7 +2,7 @@ use crate::session::{SessionInfo, SessionManager, Workspace};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, Query, State,
+        DefaultBodyLimit, Path, Query, State,
     },
     http::{HeaderMap, Method, StatusCode},
     response::{IntoResponse, Response},
@@ -97,6 +97,17 @@ pub struct RenamePayload {
     pub name: String,
 }
 
+#[derive(Deserialize)]
+pub struct CreateWorkspacePayload {
+    pub name: String,
+    pub path: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct RenameWorkspacePayload {
+    pub name: String,
+}
+
 fn is_authorized(headers: &HeaderMap, query_token: Option<&str>, state: &AppState) -> bool {
     // 1. Check query parameter token
     if let Some(t) = query_token {
@@ -137,10 +148,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/sessions/:id", delete(close_session).patch(rename_session))
         .route("/api/sessions/:id/resize", post(resize_session))
         .route("/api/sessions/:id/input", post(send_session_input))
-        .route("/api/upload", post(upload_screenshot))
+        .route(
+            "/api/upload",
+            post(upload_screenshot).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
+        )
         .route("/api/captures", get(get_captures_info).delete(clear_captures))
         .route("/api/captures/open", post(open_captures_folder))
-        .route("/api/workspaces", get(list_workspaces))
+        .route("/api/workspaces", get(list_workspaces).post(create_workspace))
+        .route("/api/workspaces/:id", delete(delete_workspace).patch(rename_workspace))
         .route("/ws/terminal/:id", get(ws_terminal_handler))
         .fallback(static_file_handler)
         .layer(cors)
@@ -445,6 +460,56 @@ async fn list_workspaces(
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(Json(state.manager.list_workspaces()))
+}
+
+async fn create_workspace(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Json(payload): Json<CreateWorkspacePayload>,
+) -> Result<Json<Workspace>, (StatusCode, String)> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
+    }
+    let name = payload.name.trim();
+    if name.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Workspace name cannot be empty".into()));
+    }
+    let ws = state.manager.add_workspace(name.to_string(), payload.path);
+    Ok(Json(ws))
+}
+
+async fn delete_workspace(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> StatusCode {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    if state.manager.remove_workspace(&id) {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+async fn rename_workspace(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<RenameWorkspacePayload>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
+    }
+    if state.manager.rename_workspace(&id, &payload.name) {
+        Ok(StatusCode::OK)
+    } else {
+        Err((StatusCode::NOT_FOUND, "Workspace not found".into()))
+    }
 }
 
 async fn ws_terminal_handler(

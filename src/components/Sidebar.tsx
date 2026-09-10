@@ -15,6 +15,8 @@ import {
   Image,
   Trash2,
   FolderOpen,
+  Edit2,
+  Check,
 } from 'lucide-react';
 import { CapturesInfo, SessionInfo, SystemInfo, Workspace } from '../types';
 
@@ -22,14 +24,19 @@ interface SidebarProps {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   workspaces: Workspace[];
+  activeWorkspaceId: string;
+  onSelectWorkspace: (id: string) => void;
+  onOpenCreateWorkspaceModal: () => void;
+  onDeleteWorkspace: (id: string) => void;
+  onRenameWorkspace: (id: string, newName: string) => void;
   systemInfo: SystemInfo | null;
   capturesInfo: CapturesInfo | null;
   onClearCaptures: () => void;
   onOpenCapturesFolder: () => void;
   isOpen: boolean;
   onToggle: () => void;
-  onSelectSession: (id: string) => void;
-  onCreateSession: (shell?: string) => void;
+  onSelectSession: (id: string, workspaceId: string) => void;
+  onCreateSession: (shell?: string, workspaceId?: string) => void;
   onCloseSession: (id: string) => void;
   onOpenRemoteModal: () => void;
   theme: 'dark' | 'light';
@@ -40,6 +47,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   sessions,
   activeSessionId,
   workspaces,
+  activeWorkspaceId,
+  onSelectWorkspace,
+  onOpenCreateWorkspaceModal,
+  onDeleteWorkspace,
+  onRenameWorkspace,
   systemInfo,
   capturesInfo,
   onClearCaptures,
@@ -57,9 +69,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Record<string, boolean>>({
     default: true,
   });
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<string | null>(null);
+  const [editingWorkspaceName, setEditingWorkspaceName] = useState('');
 
-  const toggleWorkspace = (id: string) => {
-    setExpandedWorkspaces((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleWorkspace = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setExpandedWorkspaces((prev) => ({
+      ...prev,
+      [id]: prev[id] === undefined ? false : !prev[id],
+    }));
+  };
+
+  const startRenaming = (ws: Workspace, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingWorkspaceId(ws.id);
+    setEditingWorkspaceName(ws.name);
+  };
+
+  const saveWorkspaceName = (id: string) => {
+    if (editingWorkspaceName.trim()) {
+      onRenameWorkspace(id, editingWorkspaceName.trim());
+    }
+    setEditingWorkspaceId(null);
   };
 
   const filteredSessions = sessions.filter(
@@ -89,9 +120,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="w-5 h-[1px] bg-white/[0.06] my-3" />
 
         <button
-          onClick={() => onCreateSession()}
-          title="New Terminal Instance"
+          onClick={onOpenCreateWorkspaceModal}
+          title="New Workspace Group"
           className="p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-colors"
+        >
+          <Layers className="w-4 h-4" />
+        </button>
+
+        <button
+          onClick={() => onCreateSession(undefined, activeWorkspaceId)}
+          title="New Terminal in Active Workspace"
+          className="p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-colors mt-1"
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -172,14 +211,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center justify-between px-2 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
           <span className="flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-amber-400" />
-            Workspaces
+            Workspace Groups
           </span>
           <button
-            onClick={() => onCreateSession()}
-            title="Create Session"
-            className="p-1 rounded hover:bg-white/[0.06] text-zinc-400 hover:text-amber-400 transition-colors"
+            onClick={onOpenCreateWorkspaceModal}
+            title="Create New Workspace Group"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-amber-400 transition-colors text-[10px] lowercase font-normal"
           >
             <Plus className="w-3.5 h-3.5" />
+            <span>new</span>
           </button>
         </div>
 
@@ -188,74 +228,221 @@ export const Sidebar: React.FC<SidebarProps> = ({
             (s) => s.workspace_id === ws.id || (!s.workspace_id && ws.id === 'default')
           );
           const isExpanded = expandedWorkspaces[ws.id] ?? true;
+          const isActiveWs = activeWorkspaceId === ws.id;
+          const isRenaming = editingWorkspaceId === ws.id;
+          const isFull = wsSessions.length >= 6;
 
           return (
-            <div key={ws.id} className="space-y-1">
-              <button
-                onClick={() => toggleWorkspace(ws.id)}
-                className="w-full flex items-center justify-between px-2 py-1 rounded text-xs font-medium text-zinc-300 hover:bg-white/[0.04] transition-colors"
+            <div
+              key={ws.id}
+              className={`rounded-lg transition-all duration-150 border ${
+                isActiveWs
+                  ? isDark
+                    ? 'bg-[#12141c]/90 border-amber-400/40 shadow-sm shadow-amber-500/5'
+                    : 'bg-amber-50/70 border-amber-400/50 shadow-sm'
+                  : isDark
+                  ? 'bg-transparent border-transparent hover:bg-white/[0.02]'
+                  : 'bg-transparent border-transparent hover:bg-zinc-100/60'
+              }`}
+            >
+              {/* Workspace Group Header Card */}
+              <div
+                onClick={() => {
+                  onSelectWorkspace(ws.id);
+                  setExpandedWorkspaces((prev) => ({ ...prev, [ws.id]: true }));
+                }}
+                className="group w-full flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer select-none"
               >
-                <div className="flex items-center gap-1.5 truncate">
-                  {isExpanded ? (
-                    <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
-                  ) : (
-                    <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
-                  )}
-                  <span className="truncate">{ws.name}</span>
-                </div>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/[0.06] text-zinc-400 font-mono">
-                  {wsSessions.length}
-                </span>
-              </button>
+                <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                  <button
+                    onClick={(e) => toggleWorkspace(ws.id, e)}
+                    className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    )}
+                  </button>
 
-              {isExpanded && (
-                <div className="space-y-1 pl-2">
-                  {wsSessions.map((session) => {
-                    const isSelected = activeSessionId === session.id;
-                    return (
+                  <div className="flex flex-col min-w-0">
+                    {isRenaming ? (
                       <div
-                        key={session.id}
-                        onClick={() => onSelectSession(session.id)}
-                        className={`group relative flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer transition-all duration-150 ${
-                          isSelected
-                            ? isDark
-                              ? 'bg-white/[0.06] text-white border-l-2 border-amber-400 rounded-l-none font-medium'
-                              : 'bg-amber-50 text-amber-950 border-l-2 border-amber-500 rounded-l-none font-medium'
-                            : isDark
-                            ? 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
-                            : 'text-zinc-600 hover:bg-zinc-100'
-                        }`}
+                        className="flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex items-center gap-2 min-w-0 pr-2">
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                              session.is_alive ? 'bg-amber-400' : 'bg-zinc-600'
-                            }`}
-                          />
-                          <div className="flex flex-col min-w-0">
-                            <span className="truncate text-xs font-medium tracking-tight">
-                              {session.name}
-                            </span>
-                            <span className="truncate text-[10px] text-zinc-500 flex items-center gap-1">
-                              <Folder className="w-2.5 h-2.5 shrink-0 text-zinc-500" />
-                              {session.cwd.split('\\').pop() || session.cwd}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onCloseSession(session.id);
+                        <input
+                          type="text"
+                          value={editingWorkspaceName}
+                          onChange={(e) => setEditingWorkspaceName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveWorkspaceName(ws.id);
+                            if (e.key === 'Escape') setEditingWorkspaceId(null);
                           }}
-                          title="Close Session"
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-red-400 transition-all"
+                          onBlur={() => saveWorkspaceName(ws.id)}
+                          className="w-24 px-1 py-0.5 text-xs bg-[#090a0d] border border-amber-400 rounded text-zinc-100 outline-none"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => saveWorkspaceName(ws.id)}
+                          className="text-amber-400 hover:text-amber-300"
                         >
-                          <X className="w-3 h-3" />
+                          <Check className="w-3 h-3" />
                         </button>
                       </div>
-                    );
-                  })}
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          onDoubleClick={(e) => startRenaming(ws, e)}
+                          title="Click to switch workspace, double-click to rename"
+                          className={`truncate text-xs font-semibold tracking-tight ${
+                            isActiveWs ? 'text-amber-400' : 'text-zinc-300 group-hover:text-zinc-100'
+                          }`}
+                        >
+                          {ws.name}
+                        </span>
+                        {isActiveWs && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
+                        )}
+                      </div>
+                    )}
+
+                    <span className="truncate text-[10px] text-zinc-500 flex items-center gap-1">
+                      <Folder className="w-2.5 h-2.5 shrink-0" />
+                      {ws.path ? ws.path.split('\\').pop() || ws.path : 'default'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right controls on workspace item */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <span
+                    title={`${wsSessions.length} of max 6 sessions`}
+                    className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                      isActiveWs
+                        ? 'bg-amber-400/20 text-amber-300 font-semibold'
+                        : 'bg-white/[0.06] text-zinc-400'
+                    }`}
+                  >
+                    {wsSessions.length}/6
+                  </span>
+
+                  {/* Add session to this workspace */}
+                  <button
+                    disabled={isFull}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectWorkspace(ws.id);
+                      onCreateSession(undefined, ws.id);
+                    }}
+                    title={isFull ? 'Workspace limit reached (6 max)' : 'Add terminal to this workspace'}
+                    className={`p-1 rounded transition-colors ${
+                      isFull
+                        ? 'opacity-30 cursor-not-allowed text-zinc-600'
+                        : 'text-zinc-400 hover:text-amber-400 hover:bg-white/[0.08]'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Rename workspace */}
+                  <button
+                    onClick={(e) => startRenaming(ws, e)}
+                    title="Rename Workspace"
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 transition-all"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+
+                  {/* Delete workspace (only if more than 1 workspace exists) */}
+                  {workspaces.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (
+                          window.confirm(
+                            `Delete workspace "${ws.name}" and terminate all its ${wsSessions.length} terminal sessions?`
+                          )
+                        ) {
+                          onDeleteWorkspace(ws.id);
+                        }
+                      }}
+                      title="Delete Workspace Group"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-red-400 transition-all"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Sessions list inside this workspace group */}
+              {isExpanded && (
+                <div className="space-y-0.5 px-1.5 pb-1.5 pt-0.5">
+                  {wsSessions.length === 0 ? (
+                    <div className="px-3 py-2 text-center">
+                      <p className="text-[11px] text-zinc-500 mb-1.5">No terminal windows</p>
+                      <button
+                        onClick={() => {
+                          onSelectWorkspace(ws.id);
+                          onCreateSession(undefined, ws.id);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-white/[0.04] hover:bg-amber-400/10 hover:text-amber-400 text-zinc-400 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Launch Terminal</span>
+                      </button>
+                    </div>
+                  ) : (
+                    wsSessions.map((session) => {
+                      const isSelected = activeSessionId === session.id;
+                      return (
+                        <div
+                          key={session.id}
+                          onClick={() => onSelectSession(session.id, ws.id)}
+                          className={`group relative flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition-all duration-150 ${
+                            isSelected
+                              ? isDark
+                                ? 'bg-amber-400/10 text-white border-l-2 border-amber-400 font-medium'
+                                : 'bg-amber-100 text-amber-950 border-l-2 border-amber-500 font-medium'
+                              : isDark
+                              ? 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
+                              : 'text-zinc-600 hover:bg-zinc-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 pr-2">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                session.is_alive
+                                  ? 'bg-amber-400 shadow-[0_0_4px_rgba(245,158,11,0.6)]'
+                                  : 'bg-zinc-600'
+                              }`}
+                            />
+                            <div className="flex flex-col min-w-0">
+                              <span className="truncate text-xs font-medium tracking-tight">
+                                {session.name}
+                              </span>
+                              <span className="truncate text-[10px] text-zinc-500 flex items-center gap-1">
+                                <Folder className="w-2.5 h-2.5 shrink-0 text-zinc-500" />
+                                {session.cwd.split('\\').pop() || session.cwd}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCloseSession(session.id);
+                            }}
+                            title="Close Terminal"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-red-400 transition-all"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               )}
             </div>

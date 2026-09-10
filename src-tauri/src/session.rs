@@ -344,11 +344,11 @@ impl SessionManager {
     ) -> Result<SavedCapture, String> {
         let _ = std::fs::create_dir_all(&self.captures_dir);
 
-        // Strip data:image/png;base64, prefix if present
-        let clean_base64 = if let Some(idx) = base64_data.find(",") {
-            &base64_data[idx + 1..]
+        // Extract prefix if present (e.g. data:image/png;base64)
+        let (header, clean_base64) = if let Some(idx) = base64_data.find(",") {
+            (&base64_data[..idx], &base64_data[idx + 1..])
         } else {
-            base64_data
+            ("", base64_data)
         };
 
         use base64::Engine;
@@ -356,8 +356,9 @@ impl SessionManager {
             .decode(clean_base64.trim())
             .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
-        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("screenshot_{}.png", timestamp);
+        let ext = detect_image_extension(header, &bytes);
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S_%3f");
+        let filename = format!("screenshot_{}.{}", timestamp, ext);
         let target_path = self.captures_dir.join(&filename);
 
         std::fs::write(&target_path, &bytes)
@@ -504,6 +505,44 @@ fn strip_extended_prefix(path: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
+fn detect_image_extension(header: &str, bytes: &[u8]) -> &'static str {
+    // 1. Detect by magic bytes
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return "png";
+    }
+    if bytes.starts_with(b"\xff\xd8\xff") {
+        return "jpg";
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return "gif";
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return "webp";
+    }
+    if bytes.starts_with(b"BM") {
+        return "bmp";
+    }
+    if bytes.starts_with(b"<?xml") || bytes.starts_with(b"<svg") {
+        return "svg";
+    }
+
+    // 2. Fallback to MIME in Data URL header
+    let lower = header.to_lowercase();
+    if lower.contains("image/jpeg") || lower.contains("image/jpg") {
+        "jpg"
+    } else if lower.contains("image/webp") {
+        "webp"
+    } else if lower.contains("image/gif") {
+        "gif"
+    } else if lower.contains("image/svg") {
+        "svg"
+    } else if lower.contains("image/bmp") {
+        "bmp"
+    } else {
+        "png"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,6 +570,17 @@ mod tests {
         let target = Path::new(r"\\?\C:\Users\user\Documents\dev\veron\.veron\captures\screenshot_20260910_070000.png");
         let rel = calculate_relative_path(base, target);
         assert_eq!(rel, ".veron/captures/screenshot_20260910_070000.png");
+    }
+
+    #[test]
+    fn test_detect_image_extension() {
+        assert_eq!(detect_image_extension("", b"\x89PNG\r\n\x1a\n..."), "png");
+        assert_eq!(detect_image_extension("", b"\xff\xd8\xff\xe0..."), "jpg");
+        assert_eq!(detect_image_extension("", b"GIF89a..."), "gif");
+        assert_eq!(detect_image_extension("", b"RIFF\x00\x00\x00\x00WEBP..."), "webp");
+        assert_eq!(detect_image_extension("", b"BM..."), "bmp");
+        assert_eq!(detect_image_extension("", b"<svg viewBox=\"0 0 100 100\"></svg>"), "svg");
+        assert_eq!(detect_image_extension("data:image/webp;base64", b"unknown bytes"), "webp");
     }
 }
 
