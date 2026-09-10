@@ -318,35 +318,56 @@ export const App: React.FC = () => {
     name: string,
     path?: string,
     shell?: string,
-    kind?: 'antigravity' | 'terminal'
+    kind?: 'antigravity' | 'terminal',
+    windowCount: LayoutMode = 1
   ) => {
     try {
       const newWs = await createWorkspace({ name, path, kind });
       setWorkspaces((prev) => [...prev, newWs]);
 
       const isAgy = kind === 'antigravity';
-      // Auto-launch initial session in this new workspace group with agy
-      const firstSession = await createSession({
-        shell,
-        workspace_id: newWs.id,
-        cwd: path,
-        name: isAgy ? 'Antigravity 1' : undefined,
-        init_cmd: isAgy ? 'agy\r' : undefined,
-      });
+      const createdSessions: SessionInfo[] = [];
 
-      setSessions((prev) => [...prev, firstSession]);
+      // Auto-launch requested number of initial windows in this new workspace group (1 to 6)
+      const count = Math.min(Math.max(windowCount, 1), 6);
+      for (let i = 1; i <= count; i++) {
+        const sessionName = isAgy
+          ? (count === 1 ? 'Antigravity' : `Antigravity ${i}`)
+          : (count === 1 ? undefined : `Terminal ${i}`);
+        const sess = await createSession({
+          shell,
+          workspace_id: newWs.id,
+          cwd: path,
+          name: sessionName,
+          init_cmd: isAgy ? 'agy\r' : undefined,
+        });
+        createdSessions.push(sess);
+      }
+
+      setSessions((prev) => [...prev, ...createdSessions]);
+
+      const initialSlots: (string | null)[] = [null, null, null, null, null, null];
+      createdSessions.forEach((sess, idx) => {
+        if (idx < 6) {
+          initialSlots[idx] = sess.id;
+        }
+      });
 
       setWorkspaceSlots((prev) => ({
         ...prev,
-        [newWs.id]: [firstSession.id, null, null, null, null, null],
+        [newWs.id]: initialSlots,
       }));
       setWorkspaceLayouts((prev) => ({
         ...prev,
-        [newWs.id]: 1,
+        [newWs.id]: count as LayoutMode,
       }));
 
       handleSelectWorkspace(newWs.id);
-      showToast(`Created ${isAgy ? 'Antigravity ' : ''}workspace "${newWs.name}"`);
+      showToast(
+        `Created ${isAgy ? 'Antigravity ' : ''}workspace "${newWs.name}" (${count} ${
+          count === 1 ? 'окно' : count < 5 ? 'окна' : 'окон'
+        })`
+      );
     } catch (e) {
       showToast('Failed to create workspace');
     }

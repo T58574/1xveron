@@ -83,6 +83,15 @@ Copy-Item src-tauri\target\release\veron.exe .\veron.exe -Force
 ### ⚠️ Invariant 5: File Creation Invariant (`write_to_file`)
 When creating project files using the agent tool `write_to_file`, **NEVER** provide the `ArtifactMetadata` parameter. `ArtifactMetadata` is reserved exclusively for AI conversation artifacts in `.gemini/.../brain/`.
 
+### ⚠️ Invariant 6: Safe Binary Update & Zero Session Termination
+The user often develops and runs commands (and AI agents like `agy`) directly inside Veron.
+**NEVER terminate or taskkill `veron.exe` during active development sessions**, as this destroys all active ConPTY processes!
+- **Frontend Changes**: Axum serves `./dist` directly if present on disk. Running `npm run build` is enough — reloading the app (`Ctrl+R` / `F5`) reflects changes instantly without killing backend sessions.
+- **Binary Updates**: To replace `veron.exe` while it is running on Windows, use the NTFS rename trick:
+  ```powershell
+  Remove-Item .\veron.old.exe -Force -ErrorAction SilentlyContinue; Move-Item .\veron.exe .\veron.old.exe -Force; Copy-Item src-tauri\target\release\veron.exe .\veron.exe -Force
+  ```
+
 ---
 
 ## 4. Design System & Palette (Cybran Nation)
