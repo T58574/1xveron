@@ -5,20 +5,16 @@ import {
   ChevronDown,
   ChevronRight,
   Folder,
-  Smartphone,
-  Sun,
-  Moon,
   PanelLeftClose,
   PanelLeft,
   X,
   Layers,
-  Image,
-  Trash2,
-  FolderOpen,
   Edit2,
   Check,
+  Settings,
+  Trash2,
 } from 'lucide-react';
-import { CapturesInfo, SessionInfo, SystemInfo, Workspace } from '../types';
+import { SessionInfo, Workspace } from '../types';
 import { AntigravityIcon } from './AntigravityIcon';
 
 interface SidebarProps {
@@ -30,18 +26,13 @@ interface SidebarProps {
   onOpenCreateWorkspaceModal: () => void;
   onDeleteWorkspace: (id: string) => void;
   onRenameWorkspace: (id: string, newName: string) => void;
-  systemInfo: SystemInfo | null;
-  capturesInfo: CapturesInfo | null;
-  onClearCaptures: () => void;
-  onOpenCapturesFolder: () => void;
   isOpen: boolean;
   onToggle: () => void;
   onSelectSession: (id: string, workspaceId: string) => void;
   onCreateSession: (shell?: string, workspaceId?: string) => void;
   onCloseSession: (id: string) => void;
-  onOpenRemoteModal: () => void;
+  onOpenSettingsModal: () => void;
   theme: 'dark' | 'light';
-  onToggleTheme: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -53,18 +44,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenCreateWorkspaceModal,
   onDeleteWorkspace,
   onRenameWorkspace,
-  systemInfo,
-  capturesInfo,
-  onClearCaptures,
-  onOpenCapturesFolder,
   isOpen,
   onToggle,
   onSelectSession,
   onCreateSession,
   onCloseSession,
-  onOpenRemoteModal,
+  onOpenSettingsModal,
   theme,
-  onToggleTheme,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Record<string, boolean>>({
@@ -136,20 +122,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Plus className="w-4 h-4" />
         </button>
 
-        <div className="mt-auto flex flex-col items-center gap-2">
+        <div className="mt-auto flex flex-col items-center">
           <button
-            onClick={onOpenRemoteModal}
-            title="Mobile Wi-Fi Remote"
-            className="p-2 rounded-lg text-amber-400 hover:bg-amber-400/10 transition-colors"
-          >
-            <Smartphone className="w-4 h-4" />
-          </button>
-          <button
-            onClick={onToggleTheme}
-            title="Toggle Theme"
+            onClick={onOpenSettingsModal}
+            title="Settings"
             className="p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-colors"
           >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <Settings className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -482,63 +461,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom Panel */}
-      <div className="p-2.5 border-t border-white/[0.06] flex flex-col gap-2">
-        {/* Captures Folder Info Widget */}
-        {capturesInfo && capturesInfo.count > 0 && (
-          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06] text-xs">
-            <div className="flex items-center gap-1.5 text-zinc-300 text-[11px] truncate">
-              <Image className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="truncate">
-                {capturesInfo.count} capture{capturesInfo.count > 1 ? 's' : ''} ({capturesInfo.size_formatted})
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={onOpenCapturesFolder}
-                title="Open captures in Windows Explorer"
-                className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] transition-colors"
-              >
-                <FolderOpen className="w-3 h-3" />
-              </button>
-              <button
-                onClick={onClearCaptures}
-                title="Clear all screenshots"
-                className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-white/[0.06] transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile Remote Launcher */}
+      <div className="p-2.5 border-t border-white/[0.06]">
         <button
-          onClick={onOpenRemoteModal}
-          title="Open Mobile Remote Control"
-          className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg bg-amber-400/[0.08] border border-amber-400/20 hover:bg-amber-400/[0.14] text-amber-300 text-xs transition-all duration-150"
+          onClick={onOpenSettingsModal}
+          title="Open Settings"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-all duration-150 group"
         >
-          <div className="flex items-center gap-2 truncate">
-            <Smartphone className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-            <div className="flex flex-col items-start truncate">
-              <span className="font-medium text-[11px] text-amber-200">Phone Remote</span>
-              <span className="text-[10px] text-zinc-400 truncate font-mono">
-                {systemInfo?.lan_url ? systemInfo.lan_url.replace('http://', '').split('?')[0] : '192.168.x.x:4567'}
-              </span>
-            </div>
-          </div>
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+          <Settings className="w-4 h-4 text-zinc-400 group-hover:text-amber-400 transition-colors" />
+          <span>Settings</span>
         </button>
-
-        {/* Theme Action */}
-        <div className="flex items-center justify-between pt-0.5">
-          <button
-            onClick={onToggleTheme}
-            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded hover:bg-white/[0.04] transition-colors"
-          >
-            {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5" />}
-            <span className="text-[11px]">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
-          </button>
-        </div>
       </div>
     </div>
   );

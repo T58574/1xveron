@@ -22,6 +22,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { TerminalPane } from './components/TerminalPane';
 import { RemoteModal } from './components/RemoteModal';
+import { SettingsModal } from './components/SettingsModal';
 import { QuickScriptsModal } from './components/QuickScriptsModal';
 import { CreateWorkspaceModal } from './components/CreateWorkspaceModal';
 import { MobileView } from './components/MobileView';
@@ -48,6 +49,7 @@ export const App: React.FC = () => {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRemoteModalOpen, setIsRemoteModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isQuickScriptsOpen, setIsQuickScriptsOpen] = useState(false);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -692,18 +694,13 @@ export const App: React.FC = () => {
         onOpenCreateWorkspaceModal={() => setIsCreateWorkspaceModalOpen(true)}
         onDeleteWorkspace={handleDeleteWorkspace}
         onRenameWorkspace={handleRenameWorkspace}
-        systemInfo={systemInfo}
-        capturesInfo={capturesInfo}
-        onClearCaptures={handleClearCaptures}
-        onOpenCapturesFolder={handleOpenCapturesFolder}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         onSelectSession={handleSelectSessionFromSidebar}
         onCreateSession={(shell, wsId) => handleCreateSession(shell, wsId)}
         onCloseSession={handleCloseSession}
-        onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
+        onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
         theme={theme}
-        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       />
 
       {/* Main Content Area */}
@@ -745,6 +742,19 @@ export const App: React.FC = () => {
         isOpen={isRemoteModalOpen}
         onClose={() => setIsRemoteModalOpen(false)}
         systemInfo={systemInfo}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        capturesInfo={capturesInfo}
+        onClearCaptures={handleClearCaptures}
+        onOpenCapturesFolder={handleOpenCapturesFolder}
+        systemInfo={systemInfo}
+        onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
       />
 
       {/* Quick Scripts / Command Palette Modal */}
