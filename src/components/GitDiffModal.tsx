@@ -41,6 +41,17 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
     loadDiff();
   }, [isOpen, workspacePath, selectedFile]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleCopyDiff = () => {
@@ -66,7 +77,12 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 select-none">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 select-none"
+    >
       <div className="w-full max-w-5xl h-[85vh] bg-[#0c0d12] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="h-12 px-5 border-b border-white/[0.08] bg-[#111319] flex items-center justify-between shrink-0">

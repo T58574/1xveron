@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Settings as SettingsIcon,
@@ -44,6 +44,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [copiedToken, setCopiedToken] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const isDark = theme === 'dark';
@@ -57,8 +68,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-[#111217] border border-white/[0.08] rounded-2xl p-6 shadow-2xl text-zinc-200 max-h-[90vh] overflow-y-auto">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none"
+    >
+      <div className="relative w-full max-w-lg bg-[#111217] border border-white/[0.08] rounded-2xl p-6 shadow-2xl text-zinc-200 max-h-[85vh] overflow-y-auto custom-scrollbar">
         {/* Close Button */}
         <button
           onClick={onClose}

@@ -177,17 +177,28 @@ pub fn scan_listening_ports(session_root_pids: &[u32]) -> Vec<DetectedPort> {
             Err(_) => continue,
         };
 
-        // Skip internal/well-known windows service ports (e.g. 135, 445) and Veron's own server port (4567)
-        if port == 135 || port == 445 || port == 4567 || port == 5357 || port == 7680 {
+        // Skip internal/well-known windows service ports, Veron's own server port (4567), and AGY internal RPC/sidecars (3500-3510)
+        if port == 135
+            || port == 445
+            || port == 4567
+            || port == 5357
+            || port == 7680
+            || (3500..=3510).contains(&port)
+        {
+            continue;
+        }
+
+        let proc_name = names_map
+            .get(&pid)
+            .cloned()
+            .unwrap_or_else(|| "process".to_string());
+
+        let proc_lower = proc_name.to_lowercase();
+        if proc_lower.contains("agy") || proc_lower.contains("antigravity") {
             continue;
         }
 
         if seen_ports.insert(port) {
-            let proc_name = names_map
-                .get(&pid)
-                .cloned()
-                .unwrap_or_else(|| "process".to_string());
-
             detected.push(DetectedPort {
                 port,
                 pid,

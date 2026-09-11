@@ -297,10 +297,10 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Theme Toggle */}
         <button
           onClick={onToggleTheme}
-          title="Toggle Theme"
-          className="p-1.5 rounded-md text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-colors"
+          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          className="p-1.5 rounded-md text-zinc-400 hover:text-amber-400 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
         >
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
         </button>
       </div>
     </header>

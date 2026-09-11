@@ -240,10 +240,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 className="group w-full flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer select-none"
               >
-                <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
                   <button
                     onClick={(e) => toggleWorkspace(ws.id, e)}
-                    className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
                   >
                     {isExpanded ? (
                       <ChevronDown className="w-3.5 h-3.5" />
@@ -252,7 +252,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </button>
 
-                  <div className="flex flex-col min-w-0">
+                  <div className="flex flex-col min-w-0 flex-1">
                     {isRenaming ? (
                       <div
                         className="flex items-center gap-1"
@@ -278,7 +278,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         {isAntigravity ? (
                           <AntigravityIcon
                             size={14}
@@ -293,7 +293,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span
                           onDoubleClick={(e) => startRenaming(ws, e)}
                           title="Click to switch workspace, double-click to rename"
-                          className={`truncate text-xs font-semibold tracking-tight ${
+                          className={`truncate text-xs font-semibold tracking-tight min-w-0 flex-1 ${
                             isActiveWs
                               ? 'text-amber-400'
                               : 'text-zinc-300 group-hover:text-zinc-100'
@@ -302,12 +302,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           {ws.name}
                         </span>
                         {ws.branch && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono text-cyan-300 bg-cyan-500/15 border border-cyan-400/20 truncate max-w-[70px]">
+                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono text-cyan-300 bg-cyan-500/15 border border-cyan-400/20 truncate max-w-[65px] shrink-0">
                              {ws.branch}
                           </span>
                         )}
-                        {isAntigravity && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30">
+                        {isAntigravity && !ws.name.toLowerCase().includes('antigravity') && !ws.name.toLowerCase().includes('agy') && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30 shrink-0">
                             AGY
                           </span>
                         )}
@@ -359,7 +359,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     onClick={(e) => startRenaming(ws, e)}
                     title="Rename Workspace"
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 transition-all"
+                    className="hidden group-hover:block p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 transition-all"
                   >
                     <Edit2 className="w-3 h-3" />
                   </button>
@@ -378,7 +378,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         }
                       }}
                       title="Delete Workspace Group"
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-red-400 transition-all"
+                      className="hidden group-hover:block p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-red-400 transition-all"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -453,7 +453,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               onCloseSession(session.id);
                             }}
                             title="Close Terminal"
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-red-400 transition-all"
+                            className="hidden group-hover:block p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-red-400 transition-all"
                           >
                             <X className="w-3 h-3" />
                           </button>

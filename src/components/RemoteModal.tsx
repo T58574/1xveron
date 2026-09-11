@@ -60,6 +60,17 @@ export const RemoteModal: React.FC<RemoteModalProps> = ({ isOpen, onClose, syste
     }
   }, [isOpen, lanUrl]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleCopy = () => {
@@ -69,7 +80,12 @@ export const RemoteModal: React.FC<RemoteModalProps> = ({ isOpen, onClose, syste
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none"
+    >
       <div className="relative w-full max-w-md bg-[#111217] border border-white/[0.08] rounded-2xl p-6 shadow-2xl text-zinc-200">
         {/* Close Button */}
         <button

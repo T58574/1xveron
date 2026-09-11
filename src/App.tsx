@@ -680,6 +680,11 @@ export const App: React.FC = () => {
   }
 
   // Helper to render a terminal pane for slot index
+  const isAntigravityWorkspace =
+    activeWorkspace?.kind === 'antigravity' ||
+    activeWorkspace?.name.toLowerCase().includes('antigravity') ||
+    activeWorkspace?.name.toLowerCase().includes('agy');
+
   const renderPane = (idx: number) => {
     const s = getSessionForSlot(idx);
     return (
@@ -706,6 +711,7 @@ export const App: React.FC = () => {
         onToast={showToast}
         agyMode={agyMode}
         onToggleAgyMode={() => handleToggleAgyMode()}
+        isAntigravity={Boolean(isAntigravityWorkspace)}
       />
     );
   };

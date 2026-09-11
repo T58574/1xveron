@@ -25,11 +25,11 @@ interface QuickScriptsModalProps {
 const DEFAULT_SCRIPTS: QuickScript[] = [
   // System
   {
-    id: 'sys-kill-port',
-    title: 'Kill Port 4567 Process',
-    command: 'Stop-Process -Id (Get-NetTCPConnection -LocalPort 4567 -ErrorAction SilentlyContinue).OwningProcess -Force -ErrorAction SilentlyContinue',
+    id: 'sys-clear-screen',
+    title: 'Clear Screen / Reset Terminal',
+    command: 'Clear-Host',
     category: 'system',
-    description: 'Frees port 4567 if stuck on Windows',
+    description: 'Clears terminal display and resets buffer',
     autoExecute: true,
   },
   {

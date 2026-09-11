@@ -5,6 +5,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Maximize2, Minimize2, X, Plus, Terminal as TermIcon, Image, ImagePlus, Folder, Check } from 'lucide-react';
 import { SessionInfo } from '../types';
 import { getWsUrl, uploadScreenshot, uploadBatchScreenshots } from '../services/api';
+import { AntigravityIcon } from './AntigravityIcon';
 
 interface TerminalPaneProps {
   session: SessionInfo | undefined;
@@ -20,6 +21,7 @@ interface TerminalPaneProps {
   onCaptureSaved?: () => void;
   agyMode?: boolean;
   onToggleAgyMode?: () => void;
+  isAntigravity?: boolean;
 }
 
 export const TerminalPane: React.FC<TerminalPaneProps> = ({
@@ -36,6 +38,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   onCaptureSaved,
   agyMode = true,
   onToggleAgyMode,
+  isAntigravity = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -555,14 +558,29 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   if (!session) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border border-dashed border-white/[0.08] rounded-xl m-1 p-6 text-zinc-500 bg-[#0d0e13]/60 transition-all duration-200">
-        <TermIcon className="w-8 h-8 mb-2 opacity-30 text-amber-400" />
-        <p className="text-xs font-medium text-zinc-400">Empty Slot</p>
+        {isAntigravity ? (
+          <AntigravityIcon size={28} mode="amber" className="mb-2 opacity-50" />
+        ) : (
+          <TermIcon className="w-8 h-8 mb-2 opacity-30 text-amber-400" />
+        )}
+        <p className="text-xs font-medium text-zinc-400">
+          {isAntigravity ? 'Empty AGY Slot' : 'Empty Slot'}
+        </p>
         <button
           onClick={onSplit}
           className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] hover:text-amber-400 text-xs text-zinc-300 rounded-lg transition-all duration-150 border border-white/[0.06]"
         >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Launch Shell</span>
+          {isAntigravity ? (
+            <>
+              <AntigravityIcon size={13} mode="gradient" />
+              <span>Launch AGY</span>
+            </>
+          ) : (
+            <>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Launch Shell</span>
+            </>
+          )}
         </button>
       </div>
     );
@@ -594,10 +612,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             : 'bg-zinc-50 border-zinc-200 text-zinc-700'
         }`}
       >
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           {/* Restrained Amber Pip */}
           <span
-            className={`w-1.5 h-1.5 rounded-full transition-colors ${
+            className={`w-1.5 h-1.5 rounded-full transition-colors shrink-0 ${
               session.is_alive ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]' : 'bg-zinc-600'
             }`}
           />
@@ -623,7 +641,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
                   setNewName(session.name);
                 }
               }}
-              className="text-xs font-medium bg-[#090a0d] border border-amber-400/60 rounded px-1.5 py-0.5 text-zinc-100 outline-none w-28"
+              className="text-xs font-medium bg-[#090a0d] border border-amber-400/60 rounded px-1.5 py-0.5 text-zinc-100 outline-none w-28 shrink-0"
               autoFocus
               onClick={(e) => e.stopPropagation()}
             />
@@ -631,7 +649,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             <span
               onDoubleClick={() => setIsEditingName(true)}
               title="Double click to rename session"
-              className="text-xs font-medium truncate max-w-[150px] text-zinc-100 tracking-tight cursor-pointer hover:text-amber-400 transition-colors"
+              className="text-xs font-medium truncate min-w-0 flex-shrink text-zinc-100 tracking-tight cursor-pointer hover:text-amber-400 transition-colors"
             >
               {session.name}
             </span>
@@ -639,11 +657,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           <button
             onClick={copyCwd}
             title={`Copy: ${session.cwd}`}
-            className="hidden sm:flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-amber-400 truncate max-w-[180px] transition-all duration-150"
+            className="hidden md:flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-amber-400 truncate max-w-[140px] shrink-0 transition-all duration-150"
           >
             <Folder className="w-3 h-3 text-zinc-500 shrink-0" />
             <span className="truncate">{session.cwd.split('\\').pop() || session.cwd}</span>
-            {isCopiedPath ? <Check className="w-2.5 h-2.5 text-amber-400" /> : null}
+            {isCopiedPath ? <Check className="w-2.5 h-2.5 text-amber-400 shrink-0" /> : null}
           </button>
         </div>
 
@@ -699,7 +717,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             className="flex items-center gap-1 px-1.5 py-0.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-colors"
           >
             <ImagePlus className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden xl:inline text-[11px] font-medium">Input images</span>
+            <span className="hidden 2xl:inline text-[11px] font-medium">Input images</span>
           </button>
 
           <button
