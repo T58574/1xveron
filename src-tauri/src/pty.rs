@@ -37,6 +37,7 @@ impl PtyInstance {
         // Clean startup for PowerShell
         if shell_cmd.contains("powershell") {
             cmd.args(["-NoLogo"]);
+            cmd.env("PSREADLINE_VTINPUT", "1");
         }
 
         // Environment variables for modern UTF-8 support

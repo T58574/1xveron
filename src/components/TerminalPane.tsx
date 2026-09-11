@@ -47,6 +47,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const isUploadingRef = useRef(false);
   const lastPasteHandledTimeRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const performPasteRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const [isCopiedPath, setIsCopiedPath] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState(session?.name || '');
@@ -66,6 +67,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
       lineHeight: 1.25,
       allowProposedApi: true,
+      windowsPty: {
+        backend: 'conpty',
+      },
       theme: isDark
         ? {
             background: '#0c0d12',
@@ -120,14 +124,17 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       fitAddon.fit();
     } catch {}
 
-    // Key handler: Ctrl+Enter (multiline newline), Ctrl+C (copy when selected), Ctrl+Shift+C/V
+    // Key handler: Ctrl+Enter (multiline newline), Ctrl+C (copy when selected), Ctrl+Shift+C/V, Ctrl+V
     term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
       if (event.type === 'keydown') {
+        const isCKey = event.key.toLowerCase() === 'c' || event.code === 'KeyC';
+        const isVKey = event.key.toLowerCase() === 'v' || event.code === 'KeyV';
+
         // 1. Ctrl+Enter or Shift+Enter -> Newline (\n) for multi-line prompts (agy, Claude CLI, REPL)
         if (event.key === 'Enter' && (event.ctrlKey || event.shiftKey)) {
           event.preventDefault();
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'input', data: '\n' }));
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'input', data: '\n' }));
           }
           return false;
         }
@@ -135,7 +142,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         // 2. Ctrl+C with active selection -> Copy text to clipboard without sending SIGINT
         if (
           (event.ctrlKey || event.metaKey) &&
-          event.key.toLowerCase() === 'c' &&
+          isCKey &&
           !event.altKey &&
           !event.shiftKey
         ) {
@@ -150,7 +157,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         }
 
         // 3. Ctrl+Shift+C -> Always copy selection
-        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'c') {
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && isCKey) {
           if (term.hasSelection()) {
             const selection = term.getSelection();
             if (selection) {
@@ -160,11 +167,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           return false;
         }
 
-        // 4. Ctrl+V, Ctrl+Shift+V, Shift+Insert -> Allow native paste without sending \x16 (SYN)
-        if (
-          ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !event.altKey) ||
-          (event.shiftKey && event.key === 'Insert')
-        ) {
+        // 4. Ctrl+V, Ctrl+Shift+V, Shift+Insert -> Direct paste without sending \x16 (SYN)
+        const isPasteKey =
+          ((event.ctrlKey || event.metaKey) && isVKey && !event.altKey) ||
+          (event.shiftKey && event.key === 'Insert');
+
+        if (isPasteKey) {
+          event.preventDefault();
+          performPasteRef.current();
           return false;
         }
       }
@@ -321,17 +331,56 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     return false;
   };
 
+  const performPaste = async () => {
+    lastPasteHandledTimeRef.current = Date.now();
+    try {
+      // 1. Check for image first (for clipboard screenshot capture)
+      const handled = await tryReadClipboardImage();
+      if (handled) return;
+
+      // 2. Read text from clipboard
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+          } else if (termRef.current) {
+            termRef.current.paste(text);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to paste from clipboard:', err);
+    }
+  };
+
+  performPasteRef.current = performPaste;
+
+  // Whenever pane becomes active, focus the terminal instance so arrow keys & keyboard input work immediately
+  useEffect(() => {
+    if (isActive && termRef.current) {
+      termRef.current.focus();
+    }
+  }, [isActive]);
+
   useEffect(() => {
     if (!session) return;
 
     const handleNativePaste = async (event: ClipboardEvent) => {
+      // Prevent double paste if performPaste handled it within 150ms
+      if (Date.now() - lastPasteHandledTimeRef.current < 150) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      lastPasteHandledTimeRef.current = Date.now();
+
       // 1. Check for image first
       const imageFile = extractImageFile(event.clipboardData);
       if (imageFile) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        lastPasteHandledTimeRef.current = Date.now();
         await processAndUploadImage(imageFile);
         return;
       }
@@ -351,7 +400,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        lastPasteHandledTimeRef.current = Date.now();
 
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
@@ -391,12 +439,18 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       if (container && container.contains(event.target as Node)) {
         return;
       }
+      if (Date.now() - lastPasteHandledTimeRef.current < 150) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      lastPasteHandledTimeRef.current = Date.now();
+
       const imageFile = extractImageFile(event.clipboardData);
       if (imageFile) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        lastPasteHandledTimeRef.current = Date.now();
         await processAndUploadImage(imageFile);
         return;
       }
@@ -415,7 +469,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        lastPasteHandledTimeRef.current = Date.now();
 
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
@@ -428,24 +481,16 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!isActive) return;
+      const isVKey = event.key.toLowerCase() === 'v' || event.code === 'KeyV';
       const isPasteKey =
-        (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !event.altKey;
-      const isShiftInsert = event.shiftKey && event.key === 'Insert';
-      if (isPasteKey || isShiftInsert) {
-        setTimeout(async () => {
-          if (Date.now() - lastPasteHandledTimeRef.current > 60) {
-            const handled = await tryReadClipboardImage();
-            if (!handled) {
-              try {
-                const text = await navigator.clipboard.readText();
-                if (text && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                  lastPasteHandledTimeRef.current = Date.now();
-                  wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
-                }
-              } catch {}
-            }
-          }
-        }, 30);
+        ((event.ctrlKey || event.metaKey) && isVKey && !event.altKey) ||
+        (event.shiftKey && event.key === 'Insert');
+
+      if (isPasteKey) {
+        if (Date.now() - lastPasteHandledTimeRef.current > 150) {
+          event.preventDefault();
+          performPasteRef.current();
+        }
       }
     };
 
@@ -590,7 +635,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
   return (
     <div
-      onClick={onFocus}
+      onClick={() => {
+        onFocus();
+        termRef.current?.focus();
+      }}
       onPaste={handlePasteOrDrop}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handlePasteOrDrop}

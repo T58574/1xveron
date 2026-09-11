@@ -110,10 +110,22 @@ export const MobileView: React.FC<MobileViewProps> = ({
     // Key handler: allow native Ctrl+V without sending ASCII \x16
     term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
       if (event.type === 'keydown') {
+        const isVKey = event.key.toLowerCase() === 'v' || event.code === 'KeyV';
         if (
-          ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !event.altKey) ||
+          ((event.ctrlKey || event.metaKey) && isVKey && !event.altKey) ||
           (event.shiftKey && event.key === 'Insert')
         ) {
+          event.preventDefault();
+          if (navigator.clipboard?.readText) {
+            navigator.clipboard
+              .readText()
+              .then((text) => {
+                if (text && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+                }
+              })
+              .catch(() => {});
+          }
           return false;
         }
       }
