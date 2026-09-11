@@ -1,5 +1,7 @@
 #![windows_subsystem = "windows"]
 
+mod git;
+mod ports;
 mod pty;
 mod server;
 mod session;

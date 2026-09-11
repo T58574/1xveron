@@ -13,6 +13,7 @@ import {
   Check,
   Settings,
   Trash2,
+  GitBranch,
 } from 'lucide-react';
 import { SessionInfo, Workspace } from '../types';
 import { AntigravityIcon } from './AntigravityIcon';
@@ -284,6 +285,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             mode={isActiveWs ? 'gradient' : 'amber'}
                             className="shrink-0"
                           />
+                        ) : ws.is_worktree ? (
+                          <GitBranch className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         ) : (
                           <Layers className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                         )}
@@ -298,6 +301,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         >
                           {ws.name}
                         </span>
+                        {ws.branch && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono text-cyan-300 bg-cyan-500/15 border border-cyan-400/20 truncate max-w-[70px]">
+                             {ws.branch}
+                          </span>
+                        )}
                         {isAntigravity && (
                           <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30">
                             AGY

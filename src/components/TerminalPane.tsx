@@ -157,16 +157,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           return false;
         }
 
-        // 4. Ctrl+Shift+V -> Always paste from clipboard
-        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'v') {
-          navigator.clipboard
-            .readText()
-            .then((text) => {
-              if (text && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'input', data: text }));
-              }
-            })
-            .catch(() => {});
+        // 4. Ctrl+V, Ctrl+Shift+V, Shift+Insert -> Allow native paste without sending \x16 (SYN)
+        if (
+          ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !event.altKey) ||
+          (event.shiftKey && event.key === 'Insert')
+        ) {
           return false;
         }
       }
@@ -339,9 +334,16 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       }
 
       // 2. Check for text (Ctrl+V, Win+V, context menu)
-      const text =
+      let text =
         event.clipboardData?.getData('text/plain') ||
         event.clipboardData?.getData('text');
+
+      if (!text && navigator.clipboard?.readText) {
+        try {
+          text = await navigator.clipboard.readText();
+        } catch {}
+      }
+
       if (text) {
         event.preventDefault();
         event.stopPropagation();
@@ -396,9 +398,16 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         return;
       }
 
-      const text =
+      let text =
         event.clipboardData?.getData('text/plain') ||
         event.clipboardData?.getData('text');
+
+      if (!text && navigator.clipboard?.readText) {
+        try {
+          text = await navigator.clipboard.readText();
+        } catch {}
+      }
+
       if (text) {
         event.preventDefault();
         event.stopPropagation();
@@ -421,18 +430,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       const isShiftInsert = event.shiftKey && event.key === 'Insert';
       if (isPasteKey || isShiftInsert) {
         setTimeout(async () => {
-          if (Date.now() - lastPasteHandledTimeRef.current > 80) {
+          if (Date.now() - lastPasteHandledTimeRef.current > 60) {
             const handled = await tryReadClipboardImage();
             if (!handled) {
               try {
                 const text = await navigator.clipboard.readText();
                 if (text && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  lastPasteHandledTimeRef.current = Date.now();
                   wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
                 }
               } catch {}
             }
           }
-        }, 50);
+        }, 30);
       }
     };
 
@@ -465,12 +475,20 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       return;
     }
 
-    const text =
+    let text =
       dataTransfer?.getData('text/plain') ||
       dataTransfer?.getData('text');
+
+    if (!text && navigator.clipboard?.readText) {
+      try {
+        text = await navigator.clipboard.readText();
+      } catch {}
+    }
+
     if (text && session) {
       event.preventDefault();
       event.stopPropagation();
+      lastPasteHandledTimeRef.current = Date.now();
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
       } else if (termRef.current) {

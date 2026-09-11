@@ -44,6 +44,8 @@ pub struct SystemInfo {
     pub auth_token: String,
     pub available_shells: Vec<ShellOption>,
     pub interfaces: Vec<NetworkInterface>,
+    pub active_workspace_id: Option<String>,
+    pub active_session_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -133,11 +135,23 @@ pub struct CreateWorkspacePayload {
     pub name: String,
     pub path: Option<String>,
     pub kind: Option<String>,
+    pub create_worktree: Option<bool>,
+    pub branch: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct RenameWorkspacePayload {
     pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct OpenUrlPayload {
+    pub url: String,
+}
+
+#[derive(Serialize)]
+pub struct GitDiffResponse {
+    pub diff: String,
 }
 
 fn is_authorized(headers: &HeaderMap, query_token: Option<&str>, state: &AppState) -> bool {
@@ -176,6 +190,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/api/system", get(get_system_info))
         .route("/api/auth/verify", post(verify_token))
+        .route("/api/active", get(get_active_state).post(set_active_state))
         .route("/api/sessions", get(list_sessions).post(create_session))
         .route("/api/sessions/:id", delete(close_session).patch(rename_session))
         .route("/api/sessions/:id/resize", post(resize_session))
@@ -192,6 +207,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/captures/open", post(open_captures_folder))
         .route("/api/workspaces", get(list_workspaces).post(create_workspace))
         .route("/api/workspaces/:id", delete(delete_workspace).patch(rename_workspace))
+        .route("/api/git/status", get(get_git_status_handler))
+        .route("/api/git/diff", get(get_git_diff_handler))
+        .route("/api/git/branches", get(get_git_branches_handler))
+        .route("/api/ports", get(get_listening_ports_handler))
+        .route("/api/open-url", post(open_url_handler))
         .route("/ws/terminal/:id", get(ws_terminal_handler))
         .fallback(static_file_handler)
         .layer(cors)
@@ -319,7 +339,7 @@ pub fn get_network_interfaces() -> (String, Vec<NetworkInterface>) {
     }
 
     // Sort by score descending (highest priority first)
-    candidates.sort_by(|a, b| b.2.cmp(&a.2));
+    candidates.sort_by_key(|b| std::cmp::Reverse(b.2));
 
     let best_ip = candidates
         .first()
@@ -343,10 +363,26 @@ pub fn get_network_interfaces() -> (String, Vec<NetworkInterface>) {
     (best_ip, interfaces)
 }
 
-async fn get_system_info(State(state): State<AppState>) -> Json<SystemInfo> {
+async fn get_system_info(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Json<SystemInfo> {
     let (ip, interfaces) = get_network_interfaces();
+    let authorized = is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state);
 
-    let lan_url = format!("http://{}:{}?token={}", ip, state.port, state.auth_token);
+    let lan_url = if authorized {
+        format!("http://{}:{}?token={}", ip, state.port, state.auth_token)
+    } else {
+        format!("http://{}:{}", ip, state.port)
+    };
+
+    let token_to_return = if authorized {
+        state.auth_token.clone()
+    } else {
+        String::new()
+    };
+
     let hostname = hostname::get()
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "localhost".to_string());
@@ -396,15 +432,49 @@ async fn get_system_info(State(state): State<AppState>) -> Json<SystemInfo> {
         });
     }
 
+    let active_state = state.manager.get_active_state();
+
     Json(SystemInfo {
         local_ip: ip,
         port: state.port,
         lan_url,
         hostname,
-        auth_token: state.auth_token,
+        auth_token: token_to_return,
         available_shells: shells,
         interfaces,
+        active_workspace_id: active_state.workspace_id,
+        active_session_id: active_state.session_id,
     })
+}
+
+#[derive(Deserialize)]
+pub struct SetActivePayload {
+    pub workspace_id: Option<String>,
+    pub session_id: Option<String>,
+}
+
+async fn get_active_state(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<Json<crate::session::ActiveState>, StatusCode> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(Json(state.manager.get_active_state()))
+}
+
+async fn set_active_state(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Json(payload): Json<SetActivePayload>,
+) -> Result<StatusCode, StatusCode> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    state.manager.set_active_state(payload.workspace_id, payload.session_id);
+    Ok(StatusCode::OK)
 }
 
 async fn list_sessions(
@@ -661,7 +731,41 @@ async fn create_workspace(
     if name.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "Workspace name cannot be empty".into()));
     }
-    let ws = state.manager.add_workspace(name.to_string(), payload.path, payload.kind);
+
+    let mut path = payload.path;
+    let mut branch = payload.branch;
+    let mut is_worktree = None;
+
+    if payload.create_worktree == Some(true) {
+        let default_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let base_path = path
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or(default_dir);
+
+        let branch_name = branch.as_deref().unwrap_or(name);
+        match crate::git::create_git_worktree(&base_path, branch_name) {
+            Ok(worktree_dir) => {
+                path = Some(worktree_dir.to_string_lossy().to_string());
+                branch = Some(branch_name.to_string());
+                is_worktree = Some(true);
+            }
+            Err(err) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create git worktree: {}", err),
+                ));
+            }
+        }
+    }
+
+    let ws = state.manager.add_workspace(
+        name.to_string(),
+        path,
+        payload.kind,
+        branch,
+        is_worktree,
+    );
     Ok(Json(ws))
 }
 
@@ -695,6 +799,97 @@ async fn rename_workspace(
         Ok(StatusCode::OK)
     } else {
         Err((StatusCode::NOT_FOUND, "Workspace not found".into()))
+    }
+}
+
+async fn get_git_status_handler(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<Json<crate::git::GitStatusResponse>, StatusCode> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let default_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let target_dir = params
+        .get("path")
+        .map(std::path::PathBuf::from)
+        .unwrap_or(default_dir);
+
+    Ok(Json(crate::git::get_git_status(&target_dir)))
+}
+
+async fn get_git_diff_handler(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<Json<GitDiffResponse>, (StatusCode, String)> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
+    }
+    let default_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let target_dir = params
+        .get("path")
+        .map(std::path::PathBuf::from)
+        .unwrap_or(default_dir);
+    let file = params.get("file").map(|s| s.as_str());
+
+    match crate::git::get_git_diff(&target_dir, file) {
+        Ok(diff) => Ok(Json(GitDiffResponse { diff })),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn get_git_branches_handler(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<String>>, StatusCode> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let default_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let target_dir = params
+        .get("path")
+        .map(std::path::PathBuf::from)
+        .unwrap_or(default_dir);
+
+    match crate::git::get_git_branches(&target_dir) {
+        Ok(branches) => Ok(Json(branches)),
+        Err(_) => Ok(Json(vec![])),
+    }
+}
+
+async fn get_listening_ports_handler(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<crate::ports::DetectedPort>>, StatusCode> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let pids = if let Some(ws_id) = params.get("workspace_id") {
+        state.manager.get_workspace_session_pids(ws_id)
+    } else {
+        vec![]
+    };
+
+    let ports = crate::ports::scan_listening_ports(&pids);
+    Ok(Json(ports))
+}
+
+async fn open_url_handler(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Json(payload): Json<OpenUrlPayload>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
+    }
+    match crate::ports::open_browser_url(&payload.url) {
+        Ok(_) => Ok(StatusCode::OK),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
 

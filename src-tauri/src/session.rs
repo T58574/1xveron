@@ -20,6 +20,8 @@ pub struct SessionInfo {
     pub workspace_id: String,
     pub created_at: i64,
     pub is_alive: bool,
+    #[serde(default)]
+    pub pid: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +31,16 @@ pub struct Workspace {
     pub path: String,
     #[serde(default)]
     pub kind: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub is_worktree: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveState {
+    pub workspace_id: Option<String>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,9 +63,9 @@ pub struct Session {
 
 impl Session {
     pub fn to_info(&self) -> SessionInfo {
-        let is_alive = {
+        let (is_alive, pid) = {
             let pty = self.pty.lock();
-            pty.running.load(Ordering::Relaxed)
+            (pty.running.load(Ordering::Relaxed), pty.process_id())
         };
         SessionInfo {
             id: self.id.clone(),
@@ -63,6 +75,7 @@ impl Session {
             workspace_id: self.workspace_id.clone(),
             created_at: self.created_at,
             is_alive,
+            pid,
         }
     }
 }
@@ -70,6 +83,7 @@ impl Session {
 pub struct SessionManager {
     sessions: Arc<RwLock<HashMap<String, Arc<Session>>>>,
     workspaces: Arc<RwLock<Vec<Workspace>>>,
+    active_state: Arc<RwLock<ActiveState>>,
     captures_dir: PathBuf,
 }
 
@@ -89,11 +103,17 @@ impl SessionManager {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| "C:\\".to_string()),
             kind: Some("terminal".to_string()),
+            branch: None,
+            is_worktree: Some(false),
         };
 
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             workspaces: Arc::new(RwLock::new(vec![default_workspace])),
+            active_state: Arc::new(RwLock::new(ActiveState {
+                workspace_id: Some("default".to_string()),
+                session_id: None,
+            })),
             captures_dir,
         }
     }
@@ -108,12 +128,32 @@ impl SessionManager {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| "C:\\".to_string()),
             kind: Some("terminal".to_string()),
+            branch: None,
+            is_worktree: Some(false),
         };
 
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             workspaces: Arc::new(RwLock::new(vec![default_workspace])),
+            active_state: Arc::new(RwLock::new(ActiveState {
+                workspace_id: Some("default".to_string()),
+                session_id: None,
+            })),
             captures_dir,
+        }
+    }
+
+    pub fn get_active_state(&self) -> ActiveState {
+        self.active_state.read().clone()
+    }
+
+    pub fn set_active_state(&self, workspace_id: Option<String>, session_id: Option<String>) {
+        let mut state = self.active_state.write();
+        if let Some(ws) = workspace_id {
+            state.workspace_id = Some(ws);
+        }
+        if let Some(sid) = session_id {
+            state.session_id = Some(sid);
         }
     }
 
@@ -121,7 +161,35 @@ impl SessionManager {
         self.workspaces.read().clone()
     }
 
-    pub fn add_workspace(&self, name: String, path: Option<String>, kind: Option<String>) -> Workspace {
+    #[allow(dead_code)]
+    pub fn get_workspace(&self, id: &str) -> Option<Workspace> {
+        self.workspaces.read().iter().find(|w| w.id == id).cloned()
+    }
+
+    pub fn get_workspace_session_pids(&self, workspace_id: &str) -> Vec<u32> {
+        let sessions = self.sessions.read();
+        sessions
+            .values()
+            .filter(|s| s.workspace_id == workspace_id)
+            .filter_map(|s| {
+                let pty = s.pty.lock();
+                if pty.running.load(Ordering::Relaxed) {
+                    pty.process_id()
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn add_workspace(
+        &self,
+        name: String,
+        path: Option<String>,
+        kind: Option<String>,
+        branch: Option<String>,
+        is_worktree: Option<bool>,
+    ) -> Workspace {
         let ws_path = path.unwrap_or_else(|| {
             std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
@@ -132,8 +200,11 @@ impl SessionManager {
             name,
             path: ws_path,
             kind: kind.or(Some("terminal".to_string())),
+            branch,
+            is_worktree,
         };
         self.workspaces.write().push(ws.clone());
+        self.set_active_state(Some(ws.id.clone()), None);
         ws
     }
 
@@ -153,8 +224,19 @@ impl SessionManager {
         }
 
         let mut workspaces = self.workspaces.write();
+        let target_ws = workspaces.iter().find(|w| w.id == id).cloned();
+
         let initial_len = workspaces.len();
         workspaces.retain(|w| w.id != id);
+
+        // If target was a git worktree, cleanly remove the worktree
+        if let Some(ws) = target_ws {
+            if ws.is_worktree == Some(true) {
+                let ws_path = std::path::PathBuf::from(&ws.path);
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let _ = crate::git::remove_git_worktree(&current_dir, &ws_path);
+            }
+        }
 
         // If all workspaces were deleted, restore a default one
         if workspaces.is_empty() {
@@ -165,6 +247,8 @@ impl SessionManager {
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|_| "C:\\".to_string()),
                 kind: Some("terminal".to_string()),
+                branch: None,
+                is_worktree: Some(false),
             };
             workspaces.push(default_ws);
         }
@@ -182,6 +266,7 @@ impl SessionManager {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_session(
         &self,
         shell: Option<String>,
@@ -282,7 +367,7 @@ impl SessionManager {
             name: session_name,
             shell: shell_cmd,
             cwd: current_dir,
-            workspace_id: ws_id,
+            workspace_id: ws_id.clone(),
             created_at: chrono::Utc::now().timestamp(),
             history,
             output_tx,
@@ -290,7 +375,8 @@ impl SessionManager {
         });
 
         let info = session.to_info();
-        self.sessions.write().insert(id, session);
+        self.sessions.write().insert(id.clone(), session);
+        self.set_active_state(Some(ws_id), Some(id));
         Ok(info)
     }
 
@@ -315,7 +401,9 @@ impl SessionManager {
 
     pub fn list_sessions(&self) -> Vec<SessionInfo> {
         let sessions = self.sessions.read();
-        sessions.values().map(|s| s.to_info()).collect()
+        let mut list: Vec<SessionInfo> = sessions.values().map(|s| s.to_info()).collect();
+        list.sort_by_key(|s| s.created_at);
+        list
     }
 
     pub fn close_session(&self, id: &str) -> bool {
@@ -524,10 +612,8 @@ impl SessionManager {
         let mut deleted = 0;
         if let Ok(entries) = std::fs::read_dir(&self.captures_dir) {
             for entry in entries.flatten() {
-                if entry.path().is_file() {
-                    if std::fs::remove_file(entry.path()).is_ok() {
-                        deleted += 1;
-                    }
+                if entry.path().is_file() && std::fs::remove_file(entry.path()).is_ok() {
+                    deleted += 1;
                 }
             }
         }
@@ -602,8 +688,8 @@ fn calculate_relative_path(base: &std::path::Path, target: &std::path::Path) -> 
 
 fn strip_extended_prefix(path: &std::path::Path) -> std::path::PathBuf {
     let s = path.to_string_lossy();
-    if s.starts_with(r"\\?\") {
-        std::path::PathBuf::from(&s[4..])
+    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        std::path::PathBuf::from(stripped)
     } else {
         path.to_path_buf()
     }

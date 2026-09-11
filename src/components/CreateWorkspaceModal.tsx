@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, Folder, X, Sparkles, LayoutGrid } from 'lucide-react';
+import { Terminal, Folder, X, Sparkles, LayoutGrid, GitBranch } from 'lucide-react';
 import { LayoutMode, ShellOption } from '../types';
 import { AntigravityIcon } from './AntigravityIcon';
 
@@ -11,7 +11,9 @@ interface CreateWorkspaceModalProps {
     path?: string,
     shell?: string,
     kind?: 'antigravity' | 'terminal',
-    windowCount?: LayoutMode
+    windowCount?: LayoutMode,
+    useWorktree?: boolean,
+    branch?: string
   ) => Promise<void>;
   availableShells?: ShellOption[];
   defaultPath?: string;
@@ -28,6 +30,8 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
   const [name, setName] = useState('Antigravity');
   const [path, setPath] = useState('');
   const [windowCount, setWindowCount] = useState<LayoutMode>(1);
+  const [useWorktree, setUseWorktree] = useState(false);
+  const [branchName, setBranchName] = useState('');
   const [selectedShell, setSelectedShell] = useState(
     availableShells?.[0]?.cmd || 'powershell.exe'
   );
@@ -58,20 +62,25 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
     setIsSubmitting(true);
     setError(null);
     try {
+      const generatedBranch = branchName.trim() || trimmedName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
       await onCreate(
         trimmedName,
         path.trim() || undefined,
         selectedShell,
         selectedKind,
-        windowCount
+        windowCount,
+        useWorktree,
+        useWorktree ? generatedBranch : undefined
       );
       setName('Antigravity');
       setPath('');
+      setBranchName('');
+      setUseWorktree(false);
       setWindowCount(1);
       setSelectedKind('antigravity');
       onClose();
-    } catch (err) {
-      setError('Failed to create workspace');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to create workspace');
     } finally {
       setIsSubmitting(false);
     }
@@ -201,7 +210,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
                 <Folder className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Working Directory</span>
+                <span>Working Directory (Base Repo)</span>
               </label>
               <input
                 type="text"
@@ -210,6 +219,64 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                 onChange={(e) => setPath(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-[#141720] border border-white/[0.08] text-zinc-100 text-xs focus:outline-none focus:border-amber-400/70 transition-colors font-mono placeholder:text-zinc-600"
               />
+            </div>
+
+            {/* Git Worktree Isolation Card */}
+            <div className="p-3 rounded-xl bg-[#131622] border border-white/[0.08] space-y-2">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`p-1.5 rounded-lg border transition-colors ${
+                      useWorktree
+                        ? 'bg-amber-400/20 border-amber-400/40 text-amber-300'
+                        : 'bg-black/40 border-white/[0.08] text-zinc-400'
+                    }`}
+                  >
+                    <GitBranch className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
+                      <span>Git Worktree Isolation</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-400/15 text-amber-300 font-mono font-bold">
+                        NEW BRANCH
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400">
+                      Изолированная ветка в <span className="font-mono text-zinc-300">.veron/worktrees/</span>
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={useWorktree}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setUseWorktree(checked);
+                    if (checked && !branchName) {
+                      setBranchName(name.toLowerCase().replace(/[^a-z0-9_-]/g, '-'));
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-white/20 bg-black/40 text-amber-400 focus:ring-amber-400/40 cursor-pointer accent-amber-400"
+                />
+              </label>
+
+              {useWorktree && (
+                <div className="pt-2 border-t border-white/[0.05] space-y-1 animate-in fade-in duration-150">
+                  <label className="text-[11px] font-medium text-zinc-300 block">
+                    Branch Name
+                  </label>
+                  <input
+                    type="text"
+                    value={branchName}
+                    onChange={(e) => setBranchName(e.target.value)}
+                    placeholder={name.toLowerCase().replace(/[^a-z0-9_-]/g, '-') || 'feat/agent-branch'}
+                    className="w-full px-3 py-1.5 rounded-lg bg-[#0d0e14] border border-amber-400/50 text-amber-300 text-xs focus:outline-none font-mono"
+                  />
+                  <p className="text-[10px] text-zinc-500">
+                    Агенты в этой группе не смогут случайно перезаписать или сломать основную ветку репозитория.
+                  </p>
+                </div>
+              )}
             </div>
 
             {selectedKind === 'antigravity' ? (

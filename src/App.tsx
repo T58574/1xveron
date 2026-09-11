@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { CapturesInfo, SessionInfo, SystemInfo, Workspace, LayoutMode } from './types';
+import {
+  CapturesInfo,
+  SessionInfo,
+  SystemInfo,
+  Workspace,
+  LayoutMode,
+  GitStatusResponse,
+  DetectedPort,
+} from './types';
 import {
   fetchSessions,
   fetchSystemInfo,
@@ -17,6 +25,9 @@ import {
   getAuthToken,
   setAuthToken,
   verifyToken,
+  updateActiveState,
+  fetchGitStatus,
+  fetchListeningPorts,
 } from './services/api';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
@@ -25,6 +36,7 @@ import { RemoteModal } from './components/RemoteModal';
 import { SettingsModal } from './components/SettingsModal';
 import { QuickScriptsModal } from './components/QuickScriptsModal';
 import { CreateWorkspaceModal } from './components/CreateWorkspaceModal';
+import { GitDiffModal } from './components/GitDiffModal';
 import { MobileView } from './components/MobileView';
 import { KeyRound, ShieldAlert } from 'lucide-react';
 
@@ -77,10 +89,48 @@ export const App: React.FC = () => {
   const [pinInput, setPinInput] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Git & Dev Server Ports state
+  const [gitStatus, setGitStatus] = useState<GitStatusResponse | null>(null);
+  const [isGitDiffOpen, setIsGitDiffOpen] = useState(false);
+  const [activePorts, setActivePorts] = useState<DetectedPort[]>([]);
+
   // Derived Active Workspace & Sessions
   const activeWorkspace =
     workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
   const activeWsId = activeWorkspace?.id || 'default';
+
+  const refreshGitStatus = async () => {
+    if (!activeWorkspace?.path) return;
+    try {
+      const status = await fetchGitStatus(activeWorkspace.path);
+      setGitStatus(status);
+    } catch {
+      setGitStatus(null);
+    }
+  };
+
+  const refreshPorts = async () => {
+    if (!activeWsId) return;
+    try {
+      const ports = await fetchListeningPorts(activeWsId);
+      setActivePorts(ports);
+    } catch {
+      setActivePorts([]);
+    }
+  };
+
+  useEffect(() => {
+    refreshGitStatus();
+    refreshPorts();
+
+    const gitInterval = setInterval(refreshGitStatus, 4000);
+    const portsInterval = setInterval(refreshPorts, 3000);
+
+    return () => {
+      clearInterval(gitInterval);
+      clearInterval(portsInterval);
+    };
+  }, [activeWorkspace?.path, activeWsId]);
 
   const activeWorkspaceSessions = sessions.filter(
     (s) => s.workspace_id === activeWsId || (!s.workspace_id && activeWsId === 'default')
@@ -103,6 +153,7 @@ export const App: React.FC = () => {
     localStorage.setItem('veron_active_workspace', wsId);
     setMaximizedPaneIndex(null);
     setActivePaneIndex(0);
+    updateActiveState(wsId, undefined);
   };
 
   // Resize listener for mobile mode
@@ -215,8 +266,14 @@ export const App: React.FC = () => {
 
         if (ws && ws.length > 0) {
           setWorkspaces(ws);
-          // Verify active workspace exists
-          if (!ws.some((w) => w.id === activeWorkspaceId)) {
+          const savedWsId = localStorage.getItem('veron_active_workspace');
+          // If on mobile OR no saved workspace OR saved is default, sync with server's active_workspace_id
+          if ((window.innerWidth < 768 || !savedWsId || savedWsId === 'default') && sys?.active_workspace_id) {
+            if (ws.some((w) => w.id === sys.active_workspace_id)) {
+              setActiveWorkspaceId(sys.active_workspace_id);
+              localStorage.setItem('veron_active_workspace', sys.active_workspace_id);
+            }
+          } else if (!ws.some((w) => w.id === activeWorkspaceId)) {
             setActiveWorkspaceId(ws[0].id);
           }
         }
@@ -325,6 +382,7 @@ export const App: React.FC = () => {
         setWorkspaceLayouts((prev) => ({ ...prev, [targetWsId]: targetMode }));
       }
 
+      updateActiveState(targetWsId, newSession.id);
       showToast(`Started ${newSession.name}`);
     } catch (e) {
       showToast('Failed to start session');
@@ -336,10 +394,18 @@ export const App: React.FC = () => {
     path?: string,
     shell?: string,
     kind?: 'antigravity' | 'terminal',
-    windowCount: LayoutMode = 1
+    windowCount: LayoutMode = 1,
+    useWorktree?: boolean,
+    branch?: string
   ) => {
     try {
-      const newWs = await createWorkspace({ name, path, kind });
+      const newWs = await createWorkspace({
+        name,
+        path,
+        kind,
+        create_worktree: useWorktree,
+        branch,
+      });
       setWorkspaces((prev) => [...prev, newWs]);
 
       const isAgy = kind === 'antigravity';
@@ -354,7 +420,7 @@ export const App: React.FC = () => {
         const sess = await createSession({
           shell,
           workspace_id: newWs.id,
-          cwd: path,
+          cwd: newWs.path,
           name: sessionName,
           init_cmd: isAgy ? 'agy\r' : undefined,
         });
@@ -381,12 +447,14 @@ export const App: React.FC = () => {
 
       handleSelectWorkspace(newWs.id);
       showToast(
-        `Created ${isAgy ? 'Antigravity ' : ''}workspace "${newWs.name}" (${count} ${
-          count === 1 ? 'окно' : count < 5 ? 'окна' : 'окон'
-        })`
+        newWs.is_worktree
+          ? `Created Git Worktree "${newWs.name}" on branch "${newWs.branch}"`
+          : `Created ${isAgy ? 'Antigravity ' : ''}workspace "${newWs.name}" (${count} ${
+              count === 1 ? 'окно' : count < 5 ? 'окна' : 'окон'
+            })`
       );
-    } catch (e) {
-      showToast('Failed to create workspace');
+    } catch (e: any) {
+      showToast(e?.message || 'Failed to create workspace');
     }
   };
 
@@ -585,18 +653,27 @@ export const App: React.FC = () => {
   if (isMobile) {
     return (
       <MobileView
+        workspaces={workspaces}
+        activeWorkspaceId={activeWsId}
+        onSelectWorkspace={(wsId) => handleSelectWorkspace(wsId)}
         sessions={activeWorkspaceSessions}
+        allSessions={sessions}
         activeSessionId={activeSessionId}
-        onSelectSession={(id) => {
+        onSelectSession={(id, wsId) => {
+          const targetWsId = wsId || activeWsId;
+          if (targetWsId !== activeWsId) {
+            handleSelectWorkspace(targetWsId);
+          }
           setWorkspaceSlots((prev) => {
-            const existing = prev[activeWsId]
-              ? [...prev[activeWsId]]
+            const existing = prev[targetWsId]
+              ? [...prev[targetWsId]]
               : [null, null, null, null, null, null];
             existing[0] = id;
-            return { ...prev, [activeWsId]: existing };
+            return { ...prev, [targetWsId]: existing };
           });
+          updateActiveState(targetWsId, id);
         }}
-        onCreateSession={(shell) => handleCreateSession(shell, activeWsId)}
+        onCreateSession={(shell, wsId) => handleCreateSession(shell, wsId || activeWsId)}
         theme={theme}
       />
     );
@@ -611,7 +688,12 @@ export const App: React.FC = () => {
         session={s}
         isActive={activePaneIndex === idx}
         isMaximized={maximizedPaneIndex === idx}
-        onFocus={() => setActivePaneIndex(idx)}
+        onFocus={() => {
+          setActivePaneIndex(idx);
+          if (s) {
+            updateActiveState(activeWsId, s.id);
+          }
+        }}
         onClose={() => {
           if (s) handleCloseSession(s.id);
         }}
@@ -737,6 +819,10 @@ export const App: React.FC = () => {
           onCreateSession={(shell) => handleCreateSession(shell, activeWsId)}
           theme={theme}
           onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          gitStatus={gitStatus}
+          onOpenGitDiff={() => setIsGitDiffOpen(true)}
+          activePorts={activePorts}
+          onToast={showToast}
         />
 
         {/* Dynamic Card Grid for Active Workspace (1 to 6 Panes) */}
@@ -744,6 +830,15 @@ export const App: React.FC = () => {
           {renderGridLayout()}
         </main>
       </div>
+
+      {/* Live Git Diff Modal */}
+      <GitDiffModal
+        isOpen={isGitDiffOpen}
+        onClose={() => setIsGitDiffOpen(false)}
+        gitStatus={gitStatus}
+        workspacePath={activeWorkspace?.path}
+        onRefresh={refreshGitStatus}
+      />
 
       {/* Create Workspace Modal */}
       <CreateWorkspaceModal

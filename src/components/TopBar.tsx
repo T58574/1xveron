@@ -13,9 +13,12 @@ import {
   Terminal as TermIcon,
   Sparkles,
   Layers,
+  GitBranch,
 } from 'lucide-react';
-import { LayoutMode, ShellOption, SystemInfo, Workspace } from '../types';
+import { LayoutMode, ShellOption, SystemInfo, Workspace, GitStatusResponse, DetectedPort } from '../types';
 import { AntigravityIcon } from './AntigravityIcon';
+import { GitDiffPill } from './GitDiffPill';
+import { PortIndicator } from './PortIndicator';
 
 interface TopBarProps {
   layoutMode: LayoutMode;
@@ -31,6 +34,10 @@ interface TopBarProps {
   onCreateSession: (shell?: string) => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
+  gitStatus: GitStatusResponse | null;
+  onOpenGitDiff: () => void;
+  activePorts: DetectedPort[];
+  onToast: (msg: string) => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -47,6 +54,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   onCreateSession,
   theme,
   onToggleTheme,
+  gitStatus,
+  onOpenGitDiff,
+  activePorts,
+  onToast,
 }) => {
   const [isShellDropdownOpen, setIsShellDropdownOpen] = useState(false);
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
@@ -83,12 +94,20 @@ export const TopBar: React.FC<TopBarProps> = ({
           >
             {isAntigravity ? (
               <AntigravityIcon size={15} mode="gradient" className="shrink-0" />
+            ) : activeWorkspace?.is_worktree ? (
+              <GitBranch className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             ) : (
               <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             )}
             <span className="font-semibold text-zinc-100 max-w-[130px] truncate">
               {activeWorkspace?.name || 'Workspace'}
             </span>
+            {activeWorkspace?.branch && (
+              <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 flex items-center gap-1 shrink-0">
+                <GitBranch className="w-2.5 h-2.5" />
+                <span className="max-w-[70px] truncate">{activeWorkspace.branch}</span>
+              </span>
+            )}
             {isAntigravity && (
               <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30">
                 AGY
@@ -127,10 +146,17 @@ export const TopBar: React.FC<TopBarProps> = ({
                     <div className="flex items-center gap-2 truncate">
                       {isWsAgy ? (
                         <AntigravityIcon size={14} mode={isCurrent ? 'gradient' : 'amber'} className="shrink-0" />
+                      ) : ws.is_worktree ? (
+                        <GitBranch className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       ) : (
                         <Layers className="w-3.5 h-3.5 shrink-0 opacity-70" />
                       )}
                       <span className="truncate">{ws.name}</span>
+                      {ws.branch && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-mono text-cyan-300 bg-cyan-500/15 border border-cyan-400/20 truncate max-w-[80px]">
+                           {ws.branch}
+                        </span>
+                      )}
                       {isWsAgy && (
                         <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-amber-400/15 text-amber-300">
                           AGY
@@ -185,6 +211,12 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right Action Tools */}
       <div className="flex items-center gap-2">
+        {/* Live Git Changes Pill */}
+        <GitDiffPill status={gitStatus} onClick={onOpenGitDiff} />
+
+        {/* Auto Port Detector Pill */}
+        <PortIndicator ports={activePorts} onToast={onToast} />
+
         {/* Launch Shell / AGY Dropdown */}
         <div className="relative">
           <button

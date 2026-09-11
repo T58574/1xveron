@@ -1,4 +1,12 @@
-import { CapturesInfo, SessionInfo, SystemInfo, Workspace } from '../types';
+import {
+  ActiveState,
+  CapturesInfo,
+  DetectedPort,
+  GitStatusResponse,
+  SessionInfo,
+  SystemInfo,
+  Workspace,
+} from '../types';
 
 const SERVER_PORT = 4567;
 
@@ -183,6 +191,8 @@ export async function createWorkspace(params: {
   name: string;
   path?: string;
   kind?: 'antigravity' | 'terminal';
+  create_worktree?: boolean;
+  branch?: string;
 }): Promise<Workspace> {
   const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
   const res = await fetch(`${API_BASE}/api/workspaces${tokenParam}`, {
@@ -190,7 +200,14 @@ export async function createWorkspace(params: {
     headers: getHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error('Failed to create workspace');
+  if (!res.ok) {
+    let msg = 'Failed to create workspace';
+    try {
+      const err = await res.json();
+      if (err?.message) msg = err.message;
+    } catch {}
+    throw new Error(msg);
+  }
   return res.json();
 }
 
@@ -259,4 +276,85 @@ export async function renameSession(sessionId: string, name: string): Promise<vo
     body: JSON.stringify({ name }),
   });
   if (!res.ok) throw new Error('Failed to rename session');
+}
+
+export async function fetchActiveState(): Promise<ActiveState> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  const res = await fetch(`${API_BASE}/api/active${tokenParam}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch active state');
+  return res.json();
+}
+
+export async function updateActiveState(
+  workspace_id?: string,
+  session_id?: string
+): Promise<void> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  await fetch(`${API_BASE}/api/active${tokenParam}`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ workspace_id, session_id }),
+  }).catch(() => {});
+}
+
+export async function fetchGitStatus(path?: string): Promise<GitStatusResponse> {
+  const tokenParam = currentToken ? `token=${encodeURIComponent(currentToken)}` : '';
+  const pathParam = path ? `path=${encodeURIComponent(path)}` : '';
+  const query = [tokenParam, pathParam].filter(Boolean).join('&');
+  const url = `${API_BASE}/api/git/status${query ? `?${query}` : ''}`;
+  const res = await fetch(url, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch git status');
+  return res.json();
+}
+
+export async function fetchGitDiff(path?: string, file?: string): Promise<{ diff: string }> {
+  const params = new URLSearchParams();
+  if (currentToken) params.set('token', currentToken);
+  if (path) params.set('path', path);
+  if (file) params.set('file', file);
+  const q = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${API_BASE}/api/git/diff${q}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch git diff');
+  return res.json();
+}
+
+export async function fetchGitBranches(path?: string): Promise<string[]> {
+  const params = new URLSearchParams();
+  if (currentToken) params.set('token', currentToken);
+  if (path) params.set('path', path);
+  const q = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${API_BASE}/api/git/branches${q}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchListeningPorts(workspaceId?: string): Promise<DetectedPort[]> {
+  const params = new URLSearchParams();
+  if (currentToken) params.set('token', currentToken);
+  if (workspaceId) params.set('workspace_id', workspaceId);
+  const q = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${API_BASE}/api/ports${q}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function openBrowserUrl(url: string): Promise<void> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  await fetch(`${API_BASE}/api/open-url${tokenParam}`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ url }),
+  }).catch(() => {
+    window.open(url, '_blank');
+  });
 }

@@ -100,6 +100,10 @@ impl PtyInstance {
         Ok(())
     }
 
+    pub fn process_id(&self) -> Option<u32> {
+        self.child.process_id()
+    }
+
     pub fn kill(&mut self) {
         self.running.store(false, Ordering::Relaxed);
         if let Some(pid) = self.child.process_id() {
