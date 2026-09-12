@@ -237,6 +237,74 @@
   - **Windows ConPTY & PowerShell VT Mode**: В `TerminalPane.tsx` передана опция `windowsPty: { backend: 'conpty' }`, а в `pty.rs` для сессий PowerShell добавлена переменная окружения `PSREADLINE_VTINPUT=1`, исключающая вывод мусорных символов `A, B, C, D` модулем PSReadLine.
   - Релизный бинарник `veron.exe` пересобран и обновлен через безопасный Hot Swap.
 
+### Milestone 18: Системный аудит, устранение критического Path Traversal и стабилизация Concurrency
+- **Ликвидация Path Traversal в `static_file_handler` (`src-tauri/src/server.rs`)**:
+  - Внедрена строгая валидация компонентов пути: любые попытки выхода через `..`, `RootDir` или Windows-префиксы дисков мгновенно отклоняются со статусом `403 Forbidden`.
+  - Добавлена каноническая проверка `canon_target.starts_with(&canon_root)`, исключающая выход за пределы директории `dist/`.
+  - Добавлен автоматический модульный тест `test_static_file_handler_blocks_path_traversal`.
+- **Ликвидация обрыва сессий и замерзания скроллбэка (`tokio::sync::broadcast::RecvError::Lagged`)**:
+  - В `server.rs` (`send_task`) и `session.rs` (фоновый сборщик истории сессий) применен `loop` с явным перехватом `RecvError::Lagged(missed)` с логированием и продолжением цикла. Терминалы больше не отваливаются при резком выводе сотен килобайт данных (`find`, `cat`, `cargo build`).
+- **Безопасное открытие URL через Win32 `ShellExecuteW` (`src-tauri/src/ports.rs`)**:
+  - Устранен вызов `cmd.exe /C start ""` с риском инъекции и поломки URL, содержащих `&` и параметры запросов.
+  - Добавлена строгая проверка схемы (`http://` и `https://` only) и вызов Win32 `ShellExecuteW` без запуска лишних шелл-процессов.
+  - Добавлен тест `test_open_browser_url_rejects_unsafe_schemes`.
+- **Оптимизация блокировок (`src-tauri/src/session.rs`)**:
+  - В `close_session` и `close_all` освобождение блокировки `sessions.write()` теперь происходит ДО синхронного вызова `taskkill`, устраняя микрофризы остальных терминалов.
+- **Ограничение размеров PTY (`src-tauri/src/pty.rs`)**:
+  - Добавлен `clamp(5, 500)` на строки и `clamp(10, 1000)` на колонки для защиты буфера ConPTY.
+- **Инициализация Tracing и гигиена кода**:
+  - В `main.rs` инициализирован `tracing_subscriber::fmt` с фильтром по умолчанию `info`.
+  - Удалена неиспользуемая зависимость `dirs = "5.0"` из `Cargo.toml`.
+  - Все 14 модульных тестов Rust проходят (100% OK), линтер Clippy выдает 0 предупреждений.
+
+### Milestone 19: Win32 ExtendedTcpTable, Batch Git, Workspaces Persistence, Visual Bell, Navigation Hotkeys, AGY Prompt Detector & Daemon Mode
+- **1.1: Win32 `GetExtendedTcpTable` (Zero-Subprocess Network Port Scanner)**:
+  - Полностью заменен спавн дочернего процесса `netstat -ano` в `src-tauri/src/ports.rs` на прямой вызов Win32 `GetExtendedTcpTable` для IPv4 (`AF_INET`) и IPv6 (`AF_INET6`) с флагом `TCP_TABLE_OWNER_PID_LISTENER`.
+  - Считывание сетевых портов и сопоставление с PID теперь происходит полностью in-memory без форка процессов, снижая CPU overhead до нуля.
+  - Добавлен модульный тест `test_get_listening_tcp_ports_win32`.
+- **1.2: Batched Git Status (`src-tauri/src/git.rs`)**:
+  - Сокращены вызовы CLI `git` с 5 до 1-2 за цикл: используется `git status --porcelain=v1 -b` и единичный `git diff HEAD --numstat`.
+  - Существенно снижена нагрузка на файловую систему и процессор при фоновом поллинге репозитория.
+- **1.3: Персистентность рабочих пространств на диске (`.veron/workspaces.json`)**:
+  - В `src-tauri/src/session.rs` реализовано автоматическое сохранение и загрузка списка рабочих пространств в `.veron/workspaces.json` при добавлении, удалении и переименовании пространств.
+  - Добавлен модульный тест `test_workspace_persistence`.
+- **2.2: Visual Bell & Индикатор завершения задач (`src/components/TerminalPane.tsx`)**:
+  - Реализован перехват события `term.onBell()`, активирующий мягкое янтарное свечение контура терминала (`ring-2 ring-amber-400/90 shadow-[0_0_25px_rgba(245,158,11,0.5)]`).
+- **2.3: Клавиатурная навигация без мыши (`src/App.tsx` и `TerminalPane.tsx`)**:
+  - `Alt + 1..6`: переключение фокуса активного квадранта / слота с автоматическим переводом фокуса курсора xterm (`termRef.current?.focus()`).
+  - `Alt + M`: разворачивание активной панели на весь экран / возврат к сетке.
+  - `Alt + W`: быстрое закрытие сессии в активном слоте.
+  - Сохранен глобальный вызов Quick Scripts по `Ctrl+K` / `Cmd+K`.
+- **3.2: Детектор состояния AI-агента "Needs Input" (`src/components/TerminalPane.tsx`)**:
+  - Реализован мониторинг буфера терминала в пространствах Antigravity: при ожидании ввода пользователя отображается пульсирующий бейдж `[● Needs Input]` в заголовке панели.
+- **4.2: Фоновый Daemon / Headless режим & CLI параметры (`src-tauri/src/main.rs`)**:
+  - Добавлена поддержка параметров командной строки `--daemon`, `-d`, `--headless`, `--server-only`, `--no-gui`.
+  - Добавлена поддержка флагов `--port <PORT>` / `-p <PORT>`, `--token <TOKEN>` / `-t <TOKEN>` (и переменной окружения `VERON_TOKEN`), а также флага справки `--help` / `-h`.
+- **Верификация**:
+  - Все 16 модульных тестов Rust успешно пройдены (`16 passed; 0 failed`).
+  - Линтер Clippy: 0 предупреждений.
+  - Сборка фронтенда Vite + TypeScript: 0 ошибок (`npm run build`).
+  - Релизный бинарник `veron.exe` собран и обновлен.
+
+### Milestone 20: 4-уровневая отказоустойчивая интеграция с глобальным буфером обмена Windows
+- **Прямой доступ к Win32 Clipboard API (`src-tauri/src/clipboard.rs`)**:
+  - Реализованы нативные функции `set_clipboard` и `get_clipboard` с прямым обращением к Win32 API (`OpenClipboard`, `EmptyClipboard`, `SetClipboardData(CF_UNICODETEXT, ...)`, `GetClipboardData`) без внешних тяжелых зависимостей.
+  - Добавлены REST-эндпоинты `POST /api/clipboard` и `GET /api/clipboard` с Bearer-авторизацией.
+  - Добавлен автоматический модульный тест `test_clipboard_roundtrip`.
+- **4-уровневая цепочка сохранения в буфер (`src/services/api.ts`)**:
+  - `copyToGlobalClipboard`: Уровень 1 — нативный `e.clipboardData.setData`, Уровень 2 — `navigator.clipboard.writeText`, Уровень 3 — `document.execCommand('copy')` через скрытый `textarea`, Уровень 4 — бэкенд `/api/clipboard` напрямую в ядро Windows.
+  - `readFromGlobalClipboard`: `navigator.clipboard.readText` с автоматическим фолбэком на `GET /api/clipboard`.
+- **Устранение бага с потерей скопированного текста в терминале (`TerminalPane.tsx`)**:
+  - Ликвидирована гонка с преждевременным сбросом выделения при `Ctrl+C`, приводившая к невозможности скопировать текст в WebView2 и случайному закрытию процессов при повторном нажатии.
+  - Добавлен слушатель нативного браузерного события `copy` на контейнере терминала.
+  - **Copy-on-Select**: автоматическое бесшумное копирование выделенного текста в буфер Windows при отпускании мыши (`mouseup`).
+  - **PowerShell/CMD Enter-to-Copy**: нажатие `Enter` при активном выделении копирует текст в глобальный буфер и снимает выделение.
+  - Интеграция `copyToGlobalClipboard` в модальные окна `SettingsModal`, `RemoteModal`, `GitDiffModal` и `MobileView`.
+- **Верификация**:
+  - Все 17 модульных тестов Rust успешно пройдены (`17 passed; 0 failed`).
+  - Сборка фронтенда Vite + TypeScript: 0 ошибок (`npm run build`).
+  - Релизный бинарник `veron.exe` пересобран и обновлен.
+
 ---
 
 ## 5. Инварианты и правила для будущих сессий
@@ -262,8 +330,6 @@
 
 ## 6. Дорожная карта на будущее (Next Milestones)
 
-1. **Глобальные хоткеи навигации**:
-   - `Alt+1..6` — быстрый фокус квадранта сетки без мыши.
-   - `Ctrl+Shift+T` — моментальный сплит текущей панели.
-2. **Visual Bell / Уведомления об окончании фоновых задач**:
-   - Мягкий янтарный импульс на границе терминала при успешном завершении длительной сборки (код 0) или красный импульс при ошибке.
+1. **Ctrl+Shift+T**: моментальный сплит текущей панели.
+2. **Auto-reconnect WebSocket**: адаптивное переподключение с экспоненциальной задержкой при временной потере сети на мобильных клиентах.
+

@@ -165,18 +165,6 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Global Keyboard Shortcut: Ctrl+K / Cmd+K for Quick Scripts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsQuickScriptsOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
   // Theme synchronization
   useEffect(() => {
     if (theme === 'dark') {
@@ -513,6 +501,61 @@ export const App: React.FC = () => {
       showToast('Failed to close session');
     }
   };
+
+  // Global Keyboard Shortcuts:
+  // - Ctrl+K / Cmd+K: Quick Scripts modal
+  // - Alt+1..6: Focus quadrant / pane 1..6
+  // - Alt+M: Toggle maximize / restore current active pane
+  // - Alt+W: Close active session in current slot
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Quick Scripts: Ctrl+K / Cmd+K
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsQuickScriptsOpen((prev) => !prev);
+        return;
+      }
+
+      // 2. Alt + 1..6: Switch active pane
+      if (e.altKey && e.key >= '1' && e.key <= '6') {
+        e.preventDefault();
+        const slotIdx = parseInt(e.key, 10) - 1;
+        setActivePaneIndex(slotIdx);
+        if (maximizedPaneIndex !== null) {
+          setMaximizedPaneIndex(slotIdx);
+        }
+        showToast(`Focused pane ${slotIdx + 1}`);
+        return;
+      }
+
+      // 3. Alt + M: Toggle maximize active pane
+      if (e.altKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        setMaximizedPaneIndex((prev) => (prev === activePaneIndex ? null : activePaneIndex));
+        showToast(
+          maximizedPaneIndex === activePaneIndex
+            ? 'Restored layout'
+            : `Maximized pane ${activePaneIndex + 1}`
+        );
+        return;
+      }
+
+      // 4. Alt + W: Close active session in current slot
+      if (e.altKey && e.key.toLowerCase() === 'w') {
+        e.preventDefault();
+        const sid = currentSlots[activePaneIndex];
+        if (sid) {
+          handleCloseSession(sid);
+        } else {
+          showToast(`No active session in pane ${activePaneIndex + 1}`);
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activePaneIndex, maximizedPaneIndex, currentSlots]);
 
   const handleClearCaptures = async () => {
     try {

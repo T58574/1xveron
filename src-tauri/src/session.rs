@@ -85,6 +85,38 @@ pub struct SessionManager {
     workspaces: Arc<RwLock<Vec<Workspace>>>,
     active_state: Arc<RwLock<ActiveState>>,
     captures_dir: PathBuf,
+    workspaces_file: PathBuf,
+}
+
+fn load_or_init_workspaces(workspaces_file: &std::path::Path) -> Vec<Workspace> {
+    if workspaces_file.exists() {
+        if let Ok(content) = std::fs::read_to_string(workspaces_file) {
+            if let Ok(ws_list) = serde_json::from_str::<Vec<Workspace>>(&content) {
+                if !ws_list.is_empty() {
+                    return ws_list;
+                }
+            }
+        }
+    }
+
+    let default_workspace = Workspace {
+        id: "default".to_string(),
+        name: "veron".to_string(),
+        path: std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "C:\\".to_string()),
+        kind: Some("terminal".to_string()),
+        branch: None,
+        is_worktree: Some(false),
+    };
+    let list = vec![default_workspace];
+    if let Some(parent) = workspaces_file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&list) {
+        let _ = std::fs::write(workspaces_file, json);
+    }
+    list
 }
 
 impl SessionManager {
@@ -96,50 +128,51 @@ impl SessionManager {
 
         let _ = std::fs::create_dir_all(&captures_dir);
 
-        let default_workspace = Workspace {
-            id: "default".to_string(),
-            name: "veron".to_string(),
-            path: std::env::current_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "C:\\".to_string()),
-            kind: Some("terminal".to_string()),
-            branch: None,
-            is_worktree: Some(false),
-        };
+        let workspaces_file = std::env::current_dir()
+            .map(|p| p.join(".veron").join("workspaces.json"))
+            .unwrap_or_else(|_| PathBuf::from("./workspaces.json"));
+
+        let workspaces = load_or_init_workspaces(&workspaces_file);
 
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
-            workspaces: Arc::new(RwLock::new(vec![default_workspace])),
+            workspaces: Arc::new(RwLock::new(workspaces)),
             active_state: Arc::new(RwLock::new(ActiveState {
                 workspace_id: Some("default".to_string()),
                 session_id: None,
             })),
             captures_dir,
+            workspaces_file,
         }
     }
 
     #[allow(dead_code)]
     pub fn with_captures_dir(captures_dir: PathBuf) -> Self {
         let _ = std::fs::create_dir_all(&captures_dir);
-        let default_workspace = Workspace {
-            id: "default".to_string(),
-            name: "veron".to_string(),
-            path: std::env::current_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "C:\\".to_string()),
-            kind: Some("terminal".to_string()),
-            branch: None,
-            is_worktree: Some(false),
-        };
+        let workspaces_file = captures_dir.parent()
+            .map(|p| p.join("workspaces.json"))
+            .unwrap_or_else(|| PathBuf::from("./workspaces.json"));
+
+        let workspaces = load_or_init_workspaces(&workspaces_file);
 
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
-            workspaces: Arc::new(RwLock::new(vec![default_workspace])),
+            workspaces: Arc::new(RwLock::new(workspaces)),
             active_state: Arc::new(RwLock::new(ActiveState {
                 workspace_id: Some("default".to_string()),
                 session_id: None,
             })),
             captures_dir,
+            workspaces_file,
+        }
+    }
+
+    fn save_workspaces(&self) {
+        if let Ok(json) = serde_json::to_string_pretty(&*self.workspaces.read()) {
+            if let Some(parent) = self.workspaces_file.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&self.workspaces_file, json);
         }
     }
 
@@ -204,6 +237,7 @@ impl SessionManager {
             is_worktree,
         };
         self.workspaces.write().push(ws.clone());
+        self.save_workspaces();
         self.set_active_state(Some(ws.id.clone()), None);
         ws
     }
@@ -253,13 +287,20 @@ impl SessionManager {
             workspaces.push(default_ws);
         }
 
-        workspaces.len() != initial_len
+        let changed = workspaces.len() != initial_len;
+        drop(workspaces);
+        if changed {
+            self.save_workspaces();
+        }
+        changed
     }
 
     pub fn rename_workspace(&self, id: &str, new_name: &str) -> bool {
         let mut workspaces = self.workspaces.write();
         if let Some(ws) = workspaces.iter_mut().find(|w| w.id == id) {
             ws.name = new_name.trim().to_string();
+            drop(workspaces);
+            self.save_workspaces();
             true
         } else {
             false
@@ -332,12 +373,21 @@ impl SessionManager {
 
         // Maintain history buffer in background task
         tokio::spawn(async move {
-            while let Ok(data) = output_rx.recv().await {
-                let mut hist = history_clone.lock();
-                hist.extend_from_slice(&data);
-                if hist.len() > MAX_HISTORY_BYTES {
-                    let trim = hist.len() - MAX_HISTORY_BYTES;
-                    hist.drain(0..trim);
+            loop {
+                match output_rx.recv().await {
+                    Ok(data) => {
+                        let mut hist = history_clone.lock();
+                        hist.extend_from_slice(&data);
+                        if hist.len() > MAX_HISTORY_BYTES {
+                            let trim = hist.len() - MAX_HISTORY_BYTES;
+                            hist.drain(0..trim);
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(missed)) => {
+                        tracing::warn!("Session history buffer lagged by {} messages", missed);
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
         });
@@ -407,8 +457,12 @@ impl SessionManager {
     }
 
     pub fn close_session(&self, id: &str) -> bool {
-        let mut sessions = self.sessions.write();
-        if let Some(session) = sessions.remove(id) {
+        let session = {
+            let mut sessions = self.sessions.write();
+            sessions.remove(id)
+        };
+
+        if let Some(session) = session {
             let mut pty = session.pty.lock();
             pty.kill();
             info!("Closed session: {}", id);
@@ -419,11 +473,14 @@ impl SessionManager {
     }
 
     pub fn close_all(&self) {
-        let mut sessions = self.sessions.write();
-        let count = sessions.len();
-        if count > 0 {
-            info!("Closing all {} active terminal sessions...", count);
-            for (id, session) in sessions.drain() {
+        let sessions_to_kill: Vec<(String, Arc<Session>)> = {
+            let mut sessions = self.sessions.write();
+            sessions.drain().collect()
+        };
+
+        if !sessions_to_kill.is_empty() {
+            info!("Closing all {} active terminal sessions...", sessions_to_kill.len());
+            for (id, session) in sessions_to_kill {
                 let mut pty = session.pty.lock();
                 pty.kill();
                 info!("Cleaned up session process tree for {}", id);
@@ -817,6 +874,24 @@ mod tests {
         assert!(cap.file_path.ends_with("agy_test.png"));
         assert!(std::path::Path::new(&cap.file_path).exists());
         
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_workspace_persistence() {
+        let temp_dir = std::env::temp_dir().join(format!("veron_test_ws_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
+        let caps = temp_dir.join("captures");
+        let sm = SessionManager::with_captures_dir(caps);
+
+        sm.add_workspace("Project Alpha".to_string(), Some("C:\\dev\\alpha".to_string()), Some("terminal".to_string()), None, None);
+        let list = sm.list_workspaces();
+        assert!(list.iter().any(|w| w.name == "Project Alpha"));
+
+        // Load again from same directory
+        let sm2 = SessionManager::with_captures_dir(temp_dir.join("captures"));
+        let list2 = sm2.list_workspaces();
+        assert!(list2.iter().any(|w| w.name == "Project Alpha"), "Workspace should persist on disk");
+
         let _ = std::fs::remove_dir_all(temp_dir);
     }
 }

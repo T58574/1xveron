@@ -19,6 +19,7 @@ target/
 .veron/captures/*
 !.veron/captures/.gitkeep
 .veron/*.log
+.veron/*.json
 
 # Environment variables
 .env

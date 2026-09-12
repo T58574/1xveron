@@ -4,7 +4,13 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Maximize2, Minimize2, X, Plus, Terminal as TermIcon, Image, ImagePlus, Folder, Check } from 'lucide-react';
 import { SessionInfo } from '../types';
-import { getWsUrl, uploadScreenshot, uploadBatchScreenshots } from '../services/api';
+import {
+  getWsUrl,
+  uploadScreenshot,
+  uploadBatchScreenshots,
+  copyToGlobalClipboard,
+  readFromGlobalClipboard,
+} from '../services/api';
 import { AntigravityIcon } from './AntigravityIcon';
 
 interface TerminalPaneProps {
@@ -41,16 +47,20 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   isAntigravity = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const isUploadingRef = useRef(false);
-  const lastPasteHandledTimeRef = useRef(0);
+  const isPastingRef = useRef(false);
+  const lastPasteTimeRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const performPasteRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const [isCopiedPath, setIsCopiedPath] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState(session?.name || '');
+  const [isBelling, setIsBelling] = useState(false);
+  const [isAwaitingInput, setIsAwaitingInput] = useState(false);
 
   useEffect(() => {
     setNewName(session?.name || '');
@@ -127,8 +137,16 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     // Key handler: Ctrl+Enter (multiline newline), Ctrl+C (copy when selected), Ctrl+Shift+C/V, Ctrl+V
     term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
       if (event.type === 'keydown') {
-        const isCKey = event.key.toLowerCase() === 'c' || event.code === 'KeyC';
-        const isVKey = event.key.toLowerCase() === 'v' || event.code === 'KeyV';
+        const isCKey =
+          event.key.toLowerCase() === 'c' ||
+          event.code === 'KeyC' ||
+          event.key === 'с' ||
+          event.key === 'С';
+        const isVKey =
+          event.key.toLowerCase() === 'v' ||
+          event.code === 'KeyV' ||
+          event.key === 'м' ||
+          event.key === 'М';
 
         // 1. Ctrl+Enter or Shift+Enter -> Newline (\n) for multi-line prompts (agy, Claude CLI, REPL)
         if (event.key === 'Enter' && (event.ctrlKey || event.shiftKey)) {
@@ -149,7 +167,8 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           if (term.hasSelection()) {
             const selection = term.getSelection();
             if (selection) {
-              navigator.clipboard.writeText(selection);
+              copyToGlobalClipboard(selection);
+              onToast('Copied to clipboard');
               return false; // Prevent sending SIGINT when copying!
             }
           }
@@ -161,10 +180,25 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           if (term.hasSelection()) {
             const selection = term.getSelection();
             if (selection) {
-              navigator.clipboard.writeText(selection);
+              copyToGlobalClipboard(selection);
+              onToast('Copied to clipboard');
             }
           }
           return false;
+        }
+
+        // 4. Enter with active selection -> Classic Windows conhost/PowerShell behavior: copy and unselect
+        if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+          if (term.hasSelection()) {
+            const selection = term.getSelection();
+            if (selection) {
+              event.preventDefault();
+              copyToGlobalClipboard(selection);
+              term.clearSelection();
+              onToast('Copied to clipboard');
+              return false;
+            }
+          }
         }
 
         // 4. Ctrl+V, Ctrl+Shift+V, Shift+Insert -> Direct paste without sending \x16 (SYN)
@@ -176,6 +210,15 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           event.preventDefault();
           performPasteRef.current();
           return false;
+        }
+
+        // 5. Alt+1..6, Alt+W, Alt+M -> propagate to window for global quadrant switching & closing
+        if (event.altKey) {
+          const isQuadrant = event.key >= '1' && event.key <= '6';
+          const isAction = event.key.toLowerCase() === 'w' || event.key.toLowerCase() === 'm';
+          if (isQuadrant || isAction) {
+            return false;
+          }
         }
       }
       return true;
@@ -206,17 +249,53 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       }, 50);
     };
 
+    const onBellDisposable = term.onBell(() => {
+      setIsBelling(true);
+      setTimeout(() => setIsBelling(false), 600);
+    });
+
+    let checkInputTimer: any = null;
+    const checkAwaitingInput = () => {
+      if (!isAntigravity) return;
+      try {
+        const buffer = term.buffer.active;
+        const line = buffer.getLine(buffer.cursorY)?.translateToString().trim() || '';
+        const prevLine = buffer.cursorY > 0 ? buffer.getLine(buffer.cursorY - 1)?.translateToString().trim() || '' : '';
+        const combined = `${prevLine} ${line}`.toLowerCase();
+
+        const isPrompt =
+          line.endsWith('?') ||
+          line.endsWith('›') ||
+          line.endsWith('>') ||
+          line.includes('[y/n]') ||
+          line.includes('(y/n)') ||
+          combined.includes('confirm?') ||
+          combined.includes('select an option') ||
+          combined.includes('what would you like to do');
+
+        setIsAwaitingInput(Boolean(isPrompt));
+      } catch {}
+    };
+
     ws.onmessage = (event) => {
       if (typeof event.data === 'string') {
         term.write(event.data);
       } else if (event.data instanceof ArrayBuffer) {
         term.write(new Uint8Array(event.data));
       }
+      if (isAntigravity) {
+        setIsAwaitingInput(false);
+        clearTimeout(checkInputTimer);
+        checkInputTimer = setTimeout(checkAwaitingInput, 600);
+      }
     };
 
     const onDataDisposable = term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'input', data }));
+      }
+      if (isAntigravity) {
+        setIsAwaitingInput(false);
       }
     });
 
@@ -232,13 +311,21 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     return () => {
       resizeObserver.disconnect();
+      clearTimeout(checkInputTimer);
+      onBellDisposable.dispose();
       onDataDisposable.dispose();
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
       term.dispose();
     };
-  }, [session?.id, theme]);
+  }, [session?.id, theme, isAntigravity]);
+
+  useEffect(() => {
+    if (isActive && termRef.current) {
+      termRef.current.focus();
+    }
+  }, [isActive]);
 
   const processAndUploadImage = async (imageFile: File | Blob) => {
     if (!session || isUploadingRef.current) return;
@@ -259,7 +346,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             } else {
               onToast(`Captured: ${relPath}`);
               try {
-                await navigator.clipboard.writeText(relPath);
+                await copyToGlobalClipboard(relPath);
               } catch {}
             }
             onCaptureSaved?.();
@@ -331,26 +418,39 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     return false;
   };
 
+  const pasteTextToTerminal = (text: string) => {
+    if (!text) return;
+    if (termRef.current) {
+      termRef.current.paste(text);
+    } else if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+    }
+  };
+
   const performPaste = async () => {
-    lastPasteHandledTimeRef.current = Date.now();
+    const now = Date.now();
+    if (isPastingRef.current || now - lastPasteTimeRef.current < 250) {
+      return;
+    }
+    lastPasteTimeRef.current = now;
+    isPastingRef.current = true;
+
     try {
       // 1. Check for image first (for clipboard screenshot capture)
       const handled = await tryReadClipboardImage();
       if (handled) return;
 
-      // 2. Read text from clipboard
-      if (navigator.clipboard?.readText) {
-        const text = await navigator.clipboard.readText();
-        if (text) {
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
-          } else if (termRef.current) {
-            termRef.current.paste(text);
-          }
-        }
+      // 2. Read text from clipboard (with native backend fallback)
+      const text = await readFromGlobalClipboard();
+      if (text) {
+        pasteTextToTerminal(text);
       }
     } catch (err) {
       console.error('Failed to paste from clipboard:', err);
+    } finally {
+      setTimeout(() => {
+        isPastingRef.current = false;
+      }, 100);
     }
   };
 
@@ -367,46 +467,46 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     if (!session) return;
 
     const handleNativePaste = async (event: ClipboardEvent) => {
-      // Prevent double paste if performPaste handled it within 150ms
-      if (Date.now() - lastPasteHandledTimeRef.current < 150) {
+      const now = Date.now();
+      if (isPastingRef.current || now - lastPasteTimeRef.current < 250) {
         event.preventDefault();
         event.stopPropagation();
         return;
       }
-      lastPasteHandledTimeRef.current = Date.now();
+      lastPasteTimeRef.current = now;
+      isPastingRef.current = true;
 
-      // 1. Check for image first
-      const imageFile = extractImageFile(event.clipboardData);
-      if (imageFile) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        await processAndUploadImage(imageFile);
-        return;
-      }
-
-      // 2. Check for text (Ctrl+V, Win+V, context menu)
-      let text =
-        event.clipboardData?.getData('text/plain') ||
-        event.clipboardData?.getData('text');
-
-      if (!text && navigator.clipboard?.readText) {
-        try {
-          text = await navigator.clipboard.readText();
-        } catch {}
-      }
-
-      if (text) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
-        } else if (termRef.current) {
-          termRef.current.paste(text);
+      try {
+        // 1. Check for image first (synchronous check via clipboardData)
+        const imageFile = extractImageFile(event.clipboardData);
+        if (imageFile) {
+          event.preventDefault();
+          event.stopPropagation();
+          await processAndUploadImage(imageFile);
+          return;
         }
-        return;
+
+        // 2. Check for text (Ctrl+V, Win+V, context menu)
+        let text =
+          event.clipboardData?.getData('text/plain') ||
+          event.clipboardData?.getData('text');
+
+        if (!text) {
+          try {
+            text = await readFromGlobalClipboard();
+          } catch {}
+        }
+
+        if (text) {
+          event.preventDefault();
+          event.stopPropagation();
+          pasteTextToTerminal(text);
+          return;
+        }
+      } finally {
+        setTimeout(() => {
+          isPastingRef.current = false;
+        }, 100);
       }
     };
 
@@ -415,8 +515,17 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       if (imageFile) {
         event.preventDefault();
         event.stopPropagation();
-        event.stopImmediatePropagation();
         await processAndUploadImage(imageFile);
+        return;
+      }
+
+      const text =
+        event.dataTransfer?.getData('text/plain') ||
+        event.dataTransfer?.getData('text');
+      if (text) {
+        event.preventDefault();
+        event.stopPropagation();
+        pasteTextToTerminal(text);
       }
     };
 
@@ -426,124 +535,142 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       }
     };
 
+    // Right-click context menu: copy if selection exists, paste otherwise (standard terminal behavior)
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (termRef.current?.hasSelection()) {
+        const selection = termRef.current.getSelection();
+        if (selection) {
+          copyToGlobalClipboard(selection);
+          termRef.current.clearSelection();
+          onToast('Copied to clipboard');
+        }
+      } else {
+        performPasteRef.current();
+      }
+    };
+
+    // Native browser copy event handler (guaranteed synchronous clipboardData injection)
+    const handleNativeCopy = (event: ClipboardEvent) => {
+      if (termRef.current?.hasSelection()) {
+        const selection = termRef.current.getSelection();
+        if (selection) {
+          if (event.clipboardData) {
+            event.clipboardData.setData('text/plain', selection);
+            event.preventDefault();
+          }
+          copyToGlobalClipboard(selection).catch(() => {});
+          onToast('Copied to clipboard');
+        }
+      }
+    };
+
+    // Auto-copy on select when mouse button is released (PuTTY / Windows Terminal style)
+    const handleMouseUp = () => {
+      setTimeout(() => {
+        if (termRef.current?.hasSelection()) {
+          const selection = termRef.current.getSelection();
+          if (selection && selection.length > 0) {
+            // Silently copy to Windows global clipboard so the user can switch windows and paste immediately!
+            copyToGlobalClipboard(selection).catch(() => {});
+          }
+        }
+      }, 30);
+    };
+
     const container = containerRef.current;
     if (container) {
       container.addEventListener('paste', handleNativePaste, { capture: true });
-      container.addEventListener('drop', handleNativeDrop, { capture: true });
-      container.addEventListener('dragover', handleNativeDragOver, { capture: true });
+      container.addEventListener('copy', handleNativeCopy, { capture: true });
+      container.addEventListener('mouseup', handleMouseUp);
+      container.addEventListener('contextmenu', handleContextMenu);
     }
 
-    // Global listener for active pane
+    const pane = paneRef.current;
+    if (pane) {
+      pane.addEventListener('drop', handleNativeDrop);
+      pane.addEventListener('dragover', handleNativeDragOver);
+    }
+
+    // Global listener for active pane when focus might be outside xterm
     const handleWindowPaste = async (event: ClipboardEvent) => {
       if (!isActive) return;
       if (container && container.contains(event.target as Node)) {
         return;
       }
-      if (Date.now() - lastPasteHandledTimeRef.current < 150) {
-        event.preventDefault();
-        event.stopPropagation();
+      await handleNativePaste(event);
+    };
+
+    const handleWindowCopy = (event: ClipboardEvent) => {
+      if (!isActive) return;
+      if (container && container.contains(event.target as Node)) {
         return;
       }
-      lastPasteHandledTimeRef.current = Date.now();
-
-      const imageFile = extractImageFile(event.clipboardData);
-      if (imageFile) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        await processAndUploadImage(imageFile);
-        return;
-      }
-
-      let text =
-        event.clipboardData?.getData('text/plain') ||
-        event.clipboardData?.getData('text');
-
-      if (!text && navigator.clipboard?.readText) {
-        try {
-          text = await navigator.clipboard.readText();
-        } catch {}
-      }
-
-      if (text) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
-        } else if (termRef.current) {
-          termRef.current.paste(text);
-        }
-        return;
-      }
+      handleNativeCopy(event);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!isActive) return;
-      const isVKey = event.key.toLowerCase() === 'v' || event.code === 'KeyV';
+      // If event happened inside terminal container, attachCustomKeyEventHandler already handled it!
+      if (container && container.contains(event.target as Node)) {
+        return;
+      }
+
+      const isCKey =
+        event.key.toLowerCase() === 'c' ||
+        event.code === 'KeyC' ||
+        event.key === 'с' ||
+        event.key === 'С';
+
+      if ((event.ctrlKey || event.metaKey) && isCKey && !event.altKey) {
+        if (termRef.current?.hasSelection()) {
+          const selection = termRef.current.getSelection();
+          if (selection) {
+            event.preventDefault();
+            copyToGlobalClipboard(selection);
+            onToast('Copied to clipboard');
+            return;
+          }
+        }
+      }
+
+      const isVKey =
+        event.key.toLowerCase() === 'v' ||
+        event.code === 'KeyV' ||
+        event.key === 'м' ||
+        event.key === 'М';
       const isPasteKey =
         ((event.ctrlKey || event.metaKey) && isVKey && !event.altKey) ||
         (event.shiftKey && event.key === 'Insert');
 
       if (isPasteKey) {
-        if (Date.now() - lastPasteHandledTimeRef.current > 150) {
-          event.preventDefault();
-          performPasteRef.current();
-        }
+        event.preventDefault();
+        performPasteRef.current();
       }
     };
 
     window.addEventListener('paste', handleWindowPaste, { capture: true });
+    window.addEventListener('copy', handleWindowCopy, { capture: true });
     window.addEventListener('keydown', handleKeyDown, { capture: true });
 
     return () => {
       if (container) {
         container.removeEventListener('paste', handleNativePaste, { capture: true });
-        container.removeEventListener('drop', handleNativeDrop, { capture: true });
-        container.removeEventListener('dragover', handleNativeDragOver, { capture: true });
+        container.removeEventListener('copy', handleNativeCopy, { capture: true });
+        container.removeEventListener('mouseup', handleMouseUp);
+        container.removeEventListener('contextmenu', handleContextMenu);
+      }
+      if (pane) {
+        pane.removeEventListener('drop', handleNativeDrop);
+        pane.removeEventListener('dragover', handleNativeDragOver);
       }
       window.removeEventListener('paste', handleWindowPaste, { capture: true });
+      window.removeEventListener('copy', handleWindowCopy, { capture: true });
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
   }, [session?.id, isActive]);
-
-  const handlePasteOrDrop = async (event: React.ClipboardEvent | React.DragEvent) => {
-    let dataTransfer: DataTransfer | null = null;
-    if ('clipboardData' in event) {
-      dataTransfer = event.clipboardData;
-    } else if ('dataTransfer' in event) {
-      dataTransfer = event.dataTransfer;
-    }
-    const imageFile = extractImageFile(dataTransfer);
-    if (imageFile && session) {
-      event.preventDefault();
-      event.stopPropagation();
-      await processAndUploadImage(imageFile);
-      return;
-    }
-
-    let text =
-      dataTransfer?.getData('text/plain') ||
-      dataTransfer?.getData('text');
-
-    if (!text && navigator.clipboard?.readText) {
-      try {
-        text = await navigator.clipboard.readText();
-      } catch {}
-    }
-
-    if (text && session) {
-      event.preventDefault();
-      event.stopPropagation();
-      lastPasteHandledTimeRef.current = Date.now();
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
-      } else if (termRef.current) {
-        termRef.current.paste(text);
-      }
-    }
-  };
 
   const handleOpenFileDialog = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -635,21 +762,21 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
   return (
     <div
+      ref={paneRef}
       onClick={() => {
         onFocus();
         termRef.current?.focus();
       }}
-      onPaste={handlePasteOrDrop}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={handlePasteOrDrop}
       className={`relative flex flex-col flex-1 min-w-0 min-h-0 rounded-xl overflow-hidden transition-all duration-200 ${
         isDark
           ? 'bg-[#0c0d12] border border-white/[0.07] shadow-card'
           : 'bg-white border border-zinc-200 shadow-sm'
       } ${
-        isActive
-          ? 'ring-1 ring-amber-400/70 border-amber-400/40 shadow-pane-active'
-          : 'hover:border-white/[0.15]'
+        isBelling
+          ? 'ring-2 ring-amber-400/90 shadow-[0_0_25px_rgba(245,158,11,0.5)] border-amber-400'
+          : isActive
+            ? 'ring-1 ring-amber-400/70 border-amber-400/40 shadow-pane-active'
+            : 'hover:border-white/[0.15]'
       }`}
     >
       {/* Precision Pane Header */}
@@ -700,6 +827,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               className="text-xs font-medium truncate min-w-0 flex-shrink text-zinc-100 tracking-tight cursor-pointer hover:text-amber-400 transition-colors"
             >
               {session.name}
+            </span>
+          )}
+          {isAntigravity && isAwaitingInput && (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-400/15 text-amber-300 border border-amber-400/30 animate-pulse shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.8)]"></span>
+              Needs Input
             </span>
           )}
           <button

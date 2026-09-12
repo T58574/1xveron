@@ -11,7 +11,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { SessionInfo, Workspace } from '../types';
-import { getWsUrl } from '../services/api';
+import { getWsUrl, copyToGlobalClipboard, readFromGlobalClipboard } from '../services/api';
 import { AntigravityIcon } from './AntigravityIcon';
 
 interface MobileViewProps {
@@ -107,25 +107,43 @@ export const MobileView: React.FC<MobileViewProps> = ({
           },
     });
 
-    // Key handler: allow native Ctrl+V without sending ASCII \x16
+    // Key handler: allow native Ctrl+C / Ctrl+V without sending ASCII \x16
     term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
       if (event.type === 'keydown') {
-        const isVKey = event.key.toLowerCase() === 'v' || event.code === 'KeyV';
+        const isCKey =
+          event.key.toLowerCase() === 'c' ||
+          event.code === 'KeyC' ||
+          event.key === 'с' ||
+          event.key === 'С';
+        const isVKey =
+          event.key.toLowerCase() === 'v' ||
+          event.code === 'KeyV' ||
+          event.key === 'м' ||
+          event.key === 'М';
+
+        if ((event.ctrlKey || event.metaKey) && isCKey && !event.altKey) {
+          if (term.hasSelection()) {
+            const selection = term.getSelection();
+            if (selection) {
+              copyToGlobalClipboard(selection);
+              return false;
+            }
+          }
+          return true;
+        }
+
         if (
           ((event.ctrlKey || event.metaKey) && isVKey && !event.altKey) ||
           (event.shiftKey && event.key === 'Insert')
         ) {
           event.preventDefault();
-          if (navigator.clipboard?.readText) {
-            navigator.clipboard
-              .readText()
-              .then((text) => {
-                if (text && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                  wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
-                }
-              })
-              .catch(() => {});
-          }
+          readFromGlobalClipboard()
+            .then((text) => {
+              if (text && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+              }
+            })
+            .catch(() => {});
           return false;
         }
       }
@@ -177,15 +195,39 @@ export const MobileView: React.FC<MobileViewProps> = ({
       if (text) {
         event.preventDefault();
         event.stopPropagation();
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'input', data: text }));
+        term.paste(text);
+      }
+    };
+
+    const handleNativeCopy = (event: ClipboardEvent) => {
+      if (termRef.current?.hasSelection()) {
+        const selection = termRef.current.getSelection();
+        if (selection) {
+          if (event.clipboardData) {
+            event.clipboardData.setData('text/plain', selection);
+            event.preventDefault();
+          }
+          copyToGlobalClipboard(selection).catch(() => {});
         }
       }
+    };
+
+    const handleMouseUp = () => {
+      setTimeout(() => {
+        if (termRef.current?.hasSelection()) {
+          const selection = termRef.current.getSelection();
+          if (selection) {
+            copyToGlobalClipboard(selection).catch(() => {});
+          }
+        }
+      }, 30);
     };
 
     const container = containerRef.current;
     if (container) {
       container.addEventListener('paste', handleNativePaste, { capture: true });
+      container.addEventListener('copy', handleNativeCopy, { capture: true });
+      container.addEventListener('mouseup', handleMouseUp);
     }
 
     const resizeObserver = new ResizeObserver(() => {
@@ -202,6 +244,8 @@ export const MobileView: React.FC<MobileViewProps> = ({
       resizeObserver.disconnect();
       if (container) {
         container.removeEventListener('paste', handleNativePaste, { capture: true });
+        container.removeEventListener('copy', handleNativeCopy, { capture: true });
+        container.removeEventListener('mouseup', handleMouseUp);
       }
       if (ws.readyState === WebSocket.OPEN) ws.close();
       term.dispose();

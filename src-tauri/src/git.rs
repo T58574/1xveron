@@ -59,8 +59,8 @@ pub struct GitStatusResponse {
 }
 
 pub fn get_git_status(path: &Path) -> GitStatusResponse {
-    let repo_root = match run_git(&["rev-parse", "--show-toplevel"], Some(path)) {
-        Ok(root) => root,
+    let porcelain = match run_git(&["status", "--porcelain=v1", "-b"], Some(path)) {
+        Ok(out) => out,
         Err(_) => {
             return GitStatusResponse {
                 is_git: false,
@@ -74,93 +74,91 @@ pub fn get_git_status(path: &Path) -> GitStatusResponse {
         }
     };
 
-    let root_path = Path::new(&repo_root);
+    let repo_root = run_git(&["rev-parse", "--show-toplevel"], Some(path)).ok();
+    let root_path = repo_root.as_deref().map(Path::new).unwrap_or(path);
 
-    // Current branch
-    let branch = run_git(&["branch", "--show-current"], Some(root_path))
-        .ok()
-        .and_then(|b| {
-            if b.is_empty() {
-                // Detached HEAD fallback
-                run_git(&["rev-parse", "--short", "HEAD"], Some(root_path)).ok()
-            } else {
-                Some(b)
-            }
-        });
-
+    let mut branch: Option<String> = None;
     let mut files_map: HashMap<String, GitFileChange> = HashMap::new();
+
+    for (i, line) in porcelain.lines().enumerate() {
+        if i == 0 && line.starts_with("## ") {
+            let branch_str = &line[3..];
+            if let Some(rest) = branch_str.strip_prefix("Initial commit on ") {
+                branch = Some(rest.to_string());
+            } else if let Some(rest) = branch_str.strip_prefix("No commits yet on ") {
+                branch = Some(rest.to_string());
+            } else if branch_str.starts_with("HEAD (no branch)") {
+                branch = Some("HEAD".to_string());
+            } else {
+                let name = branch_str.split("...").next().unwrap_or(branch_str).trim();
+                branch = Some(name.to_string());
+            }
+            continue;
+        }
+
+        if line.len() < 3 {
+            continue;
+        }
+
+        let index_status = &line[0..1];
+        let worktree_status = &line[1..2];
+        let file_path = line[3..].trim().to_string();
+
+        let status = if index_status == "?" || worktree_status == "?" {
+            "untracked"
+        } else if index_status == "A" || worktree_status == "A" {
+            "added"
+        } else if index_status == "D" || worktree_status == "D" {
+            "deleted"
+        } else {
+            "modified"
+        };
+
+        files_map.insert(
+            file_path.clone(),
+            GitFileChange {
+                path: file_path,
+                status: status.to_string(),
+                insertions: 0,
+                deletions: 0,
+            },
+        );
+    }
+
     let mut total_insertions = 0usize;
     let mut total_deletions = 0usize;
 
-    // Helper to parse numstat output
-    let mut parse_numstat = |numstat_out: &str| {
-        for line in numstat_out.lines() {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
-                let ins = parts[0].parse::<usize>().unwrap_or(0);
-                let del = parts[1].parse::<usize>().unwrap_or(0);
-                let file_path = parts[2].trim().to_string();
+    // Only run diff if there are file changes
+    if !files_map.is_empty() {
+        // Run single `diff HEAD --numstat` for both staged and unstaged changes
+        let numstat_res = run_git(&["diff", "HEAD", "--numstat"], Some(root_path))
+            .or_else(|_| run_git(&["diff", "--numstat"], Some(root_path)));
 
-                total_insertions += ins;
-                total_deletions += del;
+        if let Ok(numstat_out) = numstat_res {
+            for line in numstat_out.lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 3 {
+                    let ins = parts[0].parse::<usize>().unwrap_or(0);
+                    let del = parts[1].parse::<usize>().unwrap_or(0);
+                    let file_path = parts[2].trim().to_string();
 
-                files_map
-                    .entry(file_path.clone())
-                    .and_modify(|entry| {
-                        entry.insertions += ins;
-                        entry.deletions += del;
-                    })
-                    .or_insert(GitFileChange {
-                        path: file_path,
-                        status: "modified".to_string(),
-                        insertions: ins,
-                        deletions: del,
-                    });
+                    total_insertions += ins;
+                    total_deletions += del;
+
+                    files_map
+                        .entry(file_path.clone())
+                        .and_modify(|entry| {
+                            entry.insertions += ins;
+                            entry.deletions += del;
+                        })
+                        .or_insert(GitFileChange {
+                            path: file_path,
+                            status: "modified".to_string(),
+                            insertions: ins,
+                            deletions: del,
+                        });
+                }
             }
-        }
-    };
-
-    // Unstaged changes
-    if let Ok(unstaged_stat) = run_git(&["diff", "--numstat"], Some(root_path)) {
-        parse_numstat(&unstaged_stat);
-    }
-
-    // Staged changes
-    if let Ok(staged_stat) = run_git(&["diff", "--cached", "--numstat"], Some(root_path)) {
-        parse_numstat(&staged_stat);
-    }
-
-    // Check porcelain status for untracked or specific file statuses
-    if let Ok(porcelain) = run_git(&["status", "--porcelain"], Some(root_path)) {
-        for line in porcelain.lines() {
-            if line.len() < 3 {
-                continue;
-            }
-            let index_status = &line[0..1];
-            let worktree_status = &line[1..2];
-            let file_path = line[3..].trim().to_string();
-
-            let status = if index_status == "?" || worktree_status == "?" {
-                "untracked"
-            } else if index_status == "A" || worktree_status == "A" {
-                "added"
-            } else if index_status == "D" || worktree_status == "D" {
-                "deleted"
-            } else {
-                "modified"
-            };
-
-            files_map
-                .entry(file_path.clone())
-                .and_modify(|entry| {
-                    entry.status = status.to_string();
-                })
-                .or_insert(GitFileChange {
-                    path: file_path,
-                    status: status.to_string(),
-                    insertions: 0,
-                    deletions: 0,
-                });
         }
     }
 
@@ -169,7 +167,7 @@ pub fn get_git_status(path: &Path) -> GitStatusResponse {
 
     GitStatusResponse {
         is_git: true,
-        repo_root: Some(repo_root),
+        repo_root,
         branch,
         insertions: total_insertions,
         deletions: total_deletions,
@@ -219,12 +217,12 @@ pub fn create_git_worktree(repo_path: &Path, branch_name: &str) -> Result<PathBu
     let repo_root = run_git(&["rev-parse", "--show-toplevel"], Some(repo_path))?;
     let root_path = PathBuf::from(repo_root);
 
-    // Sanitize branch name for directory
+    // Sanitize branch name for directory and git ref
     let safe_branch = branch_name
         .replace(['/', '\\', ' ', ':', '~', '^', '?', '*', '[', '`'], "-")
         .trim_matches(|c| c == '-' || c == '.')
         .to_string();
-    if safe_branch.is_empty() {
+    if safe_branch.is_empty() || safe_branch.starts_with('-') {
         return Err("Invalid branch name".to_string());
     }
 
@@ -254,14 +252,14 @@ pub fn create_git_worktree(repo_path: &Path, branch_name: &str) -> Result<PathBu
     let worktree_dir_str = worktree_dir.to_string_lossy().to_string();
 
     // Check if branch already exists
-    let branch_exists = run_git(&["rev-parse", "--verify", branch_name], Some(&root_path)).is_ok();
+    let branch_exists = run_git(&["rev-parse", "--verify", &safe_branch], Some(&root_path)).is_ok();
 
     if branch_exists {
         // Attach existing branch to new worktree
-        run_git(&["worktree", "add", &worktree_dir_str, branch_name], Some(&root_path))?;
+        run_git(&["worktree", "add", "--", &worktree_dir_str, &safe_branch], Some(&root_path))?;
     } else {
         // Create new branch and worktree
-        run_git(&["worktree", "add", "-b", branch_name, &worktree_dir_str], Some(&root_path))?;
+        run_git(&["worktree", "add", "-b", &safe_branch, "--", &worktree_dir_str], Some(&root_path))?;
     }
 
     Ok(worktree_dir)

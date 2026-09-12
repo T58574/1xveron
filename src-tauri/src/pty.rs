@@ -23,8 +23,8 @@ impl PtyInstance {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
-            rows: rows.max(5),
-            cols: cols.max(10),
+            rows: rows.clamp(5, 500),
+            cols: cols.clamp(10, 1000),
             pixel_width: 0,
             pixel_height: 0,
         })?;
@@ -93,8 +93,8 @@ impl PtyInstance {
 
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.master.resize(PtySize {
-            rows: rows.max(5),
-            cols: cols.max(10),
+            rows: rows.clamp(5, 500),
+            cols: cols.clamp(10, 1000),
             pixel_width: 0,
             pixel_height: 0,
         })?;

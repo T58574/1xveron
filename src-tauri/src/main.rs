@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+mod clipboard;
 mod git;
 mod ports;
 mod pty;
@@ -24,8 +25,63 @@ extern "system" {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .try_init();
+
     let args: Vec<String> = std::env::args().collect();
-    let server_only = args.iter().any(|arg| arg == "--server-only" || arg == "--headless");
+    let server_only = args.iter().any(|arg| {
+        arg == "--server-only"
+            || arg == "--headless"
+            || arg == "--daemon"
+            || arg == "-d"
+            || arg == "--no-gui"
+    });
+
+    let mut port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(4567);
+
+    let mut custom_token = std::env::var("VERON_TOKEN").ok();
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-p" | "--port" if i + 1 < args.len() => {
+                if let Ok(p) = args[i + 1].parse::<u16>() {
+                    port = p;
+                }
+                i += 1;
+            }
+            "-t" | "--token" if i + 1 < args.len() => {
+                custom_token = Some(args[i + 1].clone());
+                i += 1;
+            }
+            "-h" | "--help" => {
+                #[cfg(windows)]
+                unsafe {
+                    AttachConsole(0xFFFFFFFF);
+                }
+                println!("Veron Terminal Multiplexer & Orchestrator");
+                println!("Usage: veron [OPTIONS]");
+                println!();
+                println!("Options:");
+                println!("  -p, --port <PORT>      Server port (default: 4567, or PORT env)");
+                println!("  -t, --token <TOKEN>    Auth token/PIN (default: random 8-char, or VERON_TOKEN env)");
+                println!("  -d, --daemon           Run in headless / background daemon mode (no desktop window)");
+                println!("      --headless         Same as --daemon");
+                println!("      --server-only      Same as --daemon");
+                println!("  -h, --help             Show this help message");
+                return Ok(());
+            }
+            _ => {}
+        }
+        i += 1;
+    }
 
     #[cfg(windows)]
     if server_only {
@@ -34,12 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(4567);
-
-    let auth_token = uuid::Uuid::new_v4().to_string()[..8].to_uppercase();
+    let auth_token = custom_token.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()[..8].to_uppercase());
     let auth_token_clone = auth_token.clone();
 
     // Create session manager on main thread to ensure clean lifecycle management
@@ -74,8 +125,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let router = create_router(state);
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
-            if let Ok(listener) = tokio::net::TcpListener::bind(addr).await {
-                let _ = axum::serve(listener, router).await;
+            match tokio::net::TcpListener::bind(addr).await {
+                Ok(listener) => {
+                    let _ = axum::serve(listener, router).await;
+                }
+                Err(err) => {
+                    eprintln!("ERROR: Failed to bind to port {}: {}", port, err);
+                }
             }
         });
     });

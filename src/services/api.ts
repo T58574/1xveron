@@ -57,6 +57,88 @@ function getHeaders(extraHeaders: Record<string, string> = {}): Record<string, s
   return headers;
 }
 
+export async function copyToGlobalClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+
+  // Layer 1: Modern async navigator.clipboard.writeText
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      console.warn('[Veron] navigator.clipboard.writeText failed, trying fallback:', e);
+    }
+  }
+
+  // Layer 2: document.execCommand('copy') with offscreen textarea
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '-9999px';
+    textArea.style.opacity = '0';
+    textArea.setAttribute('readonly', '');
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    textArea.setSelectionRange(0, text.length);
+    const success = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    if (success) {
+      return true;
+    }
+  } catch (e) {
+    console.warn('[Veron] document.execCommand copy failed:', e);
+  }
+
+  // Layer 3: Veron Backend Native Win32 SetClipboardData
+  try {
+    const res = await fetch(`${API_BASE}/api/clipboard`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ text }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success) return true;
+    }
+  } catch (e) {
+    console.warn('[Veron] Backend /api/clipboard failed:', e);
+  }
+
+  return false;
+}
+
+export async function readFromGlobalClipboard(): Promise<string> {
+  // Layer 1: Modern async navigator.clipboard.readText
+  if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) return text;
+    } catch (e) {
+      console.warn('[Veron] navigator.clipboard.readText failed, trying backend fallback:', e);
+    }
+  }
+
+  // Layer 2: Veron Backend Native Win32 GetClipboardData
+  try {
+    const res = await fetch(`${API_BASE}/api/clipboard`, {
+      headers: getHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && typeof data.text === 'string') {
+        return data.text;
+      }
+    }
+  } catch (e) {
+    console.warn('[Veron] Backend GET /api/clipboard failed:', e);
+  }
+
+  return '';
+}
+
 export async function verifyToken(token: string): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/api/auth/verify`, {

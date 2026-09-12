@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { GitBranch, X, Copy, Check, RefreshCw, FileText } from 'lucide-react';
 import { GitStatusResponse, GitFileChange } from '../types';
-import { fetchGitDiff } from '../services/api';
+import { fetchGitDiff, copyToGlobalClipboard } from '../services/api';
 
 interface GitDiffModalProps {
   isOpen: boolean;
@@ -56,7 +56,7 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
 
   const handleCopyDiff = () => {
     if (!diffText) return;
-    navigator.clipboard.writeText(diffText);
+    copyToGlobalClipboard(diffText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

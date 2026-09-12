@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { X, Smartphone, Copy, Check, Wifi, Edit3 } from 'lucide-react';
 import { SystemInfo } from '../types';
+import { copyToGlobalClipboard } from '../services/api';
 
 interface RemoteModalProps {
   isOpen: boolean;
@@ -74,7 +75,7 @@ export const RemoteModal: React.FC<RemoteModalProps> = ({ isOpen, onClose, syste
   if (!isOpen) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(lanUrl);
+    copyToGlobalClipboard(lanUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

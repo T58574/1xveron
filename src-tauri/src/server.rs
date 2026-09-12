@@ -14,6 +14,7 @@ use local_ip_address::{list_afinet_netifas, local_ip};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use rust_embed::RustEmbed;
@@ -149,6 +150,17 @@ pub struct OpenUrlPayload {
     pub url: String,
 }
 
+#[derive(Deserialize)]
+pub struct SetClipboardPayload {
+    pub text: String,
+}
+
+#[derive(Serialize)]
+pub struct ClipboardResponse {
+    pub success: bool,
+    pub text: Option<String>,
+}
+
 #[derive(Serialize)]
 pub struct GitDiffResponse {
     pub diff: String,
@@ -212,6 +224,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/git/branches", get(get_git_branches_handler))
         .route("/api/ports", get(get_listening_ports_handler))
         .route("/api/open-url", post(open_url_handler))
+        .route("/api/clipboard", get(get_clipboard_handler).post(set_clipboard_handler))
         .route("/ws/terminal/:id", get(ws_terminal_handler))
         .fallback(static_file_handler)
         .layer(cors)
@@ -222,16 +235,29 @@ async fn static_file_handler(uri: axum::http::Uri) -> impl axum::response::IntoR
     let raw_path = uri.path().trim_start_matches('/');
     let rel_path = if raw_path.is_empty() { "index.html" } else { raw_path };
 
-    // 1. Try disk if dist/ exists
-    let disk_paths = [
-        std::path::PathBuf::from("./dist").join(rel_path),
-        std::path::PathBuf::from("../dist").join(rel_path),
+    // Prevent directory traversal: reject paths containing ParentDir (".."), RootDir, or Prefix
+    let has_traversal = std::path::Path::new(rel_path)
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)));
+    if has_traversal {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+
+    // 1. Try disk if dist/ exists (strictly confined within dist/ directory)
+    let disk_roots = [
+        std::path::PathBuf::from("./dist"),
+        std::path::PathBuf::from("../dist"),
     ];
-    for p in &disk_paths {
-        if p.exists() && p.is_file() {
-            if let Ok(data) = std::fs::read(p) {
-                let mime = mime_guess::from_path(rel_path).first_or_octet_stream();
-                return ([(axum::http::header::CONTENT_TYPE, mime.as_ref())], data).into_response();
+    for root in &disk_roots {
+        if let Ok(canon_root) = root.canonicalize() {
+            let target = canon_root.join(rel_path);
+            if let Ok(canon_target) = target.canonicalize() {
+                if canon_target.starts_with(&canon_root) && canon_target.is_file() {
+                    if let Ok(data) = std::fs::read(&canon_target) {
+                        let mime = mime_guess::from_path(rel_path).first_or_octet_stream();
+                        return ([(axum::http::header::CONTENT_TYPE, mime.as_ref())], data).into_response();
+                    }
+                }
             }
         }
     }
@@ -243,11 +269,14 @@ async fn static_file_handler(uri: axum::http::Uri) -> impl axum::response::IntoR
             ([(axum::http::header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
         }
         None => {
-            // 3. SPA fallback to index.html
-            for p in &[std::path::PathBuf::from("./dist/index.html"), std::path::PathBuf::from("../dist/index.html")] {
-                if p.exists() && p.is_file() {
-                    if let Ok(data) = std::fs::read(p) {
-                        return ([(axum::http::header::CONTENT_TYPE, "text/html")], data).into_response();
+            // 3. SPA fallback to index.html (confined strictly to canon_root)
+            for root in &disk_roots {
+                if let Ok(canon_root) = root.canonicalize() {
+                    let index_path = canon_root.join("index.html");
+                    if index_path.exists() && index_path.is_file() {
+                        if let Ok(data) = std::fs::read(&index_path) {
+                            return ([(axum::http::header::CONTENT_TYPE, "text/html")], data).into_response();
+                        }
                     }
                 }
             }
@@ -948,9 +977,18 @@ async fn handle_terminal_socket(
 
     // Task to forward PTY output -> WebSocket
     let mut send_task = tokio::spawn(async move {
-        while let Ok(data) = pty_rx.recv().await {
-            if ws_sender.send(Message::Binary(data)).await.is_err() {
-                break;
+        loop {
+            match pty_rx.recv().await {
+                Ok(data) => {
+                    if ws_sender.send(Message::Binary(data)).await.is_err() {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(missed)) => {
+                    tracing::warn!("Terminal WS stream lagged by {} messages", missed);
+                    continue;
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
     });
@@ -989,6 +1027,77 @@ async fn handle_terminal_socket(
     info!("WebSocket disconnected for session: {}", session_id);
 }
 
+async fn set_clipboard_handler(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Json(payload): Json<SetClipboardPayload>,
+) -> impl IntoResponse {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ClipboardResponse {
+                success: false,
+                text: None,
+            }),
+        )
+            .into_response();
+    }
+    match crate::clipboard::set_clipboard(&payload.text) {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(ClipboardResponse {
+                success: true,
+                text: Some(payload.text),
+            }),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ClipboardResponse {
+                success: false,
+                text: Some(err),
+            }),
+        )
+            .into_response(),
+    }
+}
+
+async fn get_clipboard_handler(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ClipboardResponse {
+                success: false,
+                text: None,
+            }),
+        )
+            .into_response();
+    }
+    match crate::clipboard::get_clipboard() {
+        Ok(text) => (
+            StatusCode::OK,
+            Json(ClipboardResponse {
+                success: true,
+                text: Some(text),
+            }),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ClipboardResponse {
+                success: false,
+                text: Some(err),
+            }),
+        )
+            .into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1017,5 +1126,18 @@ mod tests {
         }
         assert!(!best_ip.is_empty());
         assert_ne!(best_ip, "127.0.0.1");
+    }
+
+    #[tokio::test]
+    async fn test_static_file_handler_blocks_path_traversal() {
+        use axum::http::Uri;
+
+        let uri: Uri = "/../Cargo.toml".parse().unwrap();
+        let res = static_file_handler(uri).await.into_response();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        let uri: Uri = "/C:/Windows/win.ini".parse().unwrap();
+        let res = static_file_handler(uri).await.into_response();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
     }
 }

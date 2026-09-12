@@ -1,11 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+
+#[cfg(not(target_os = "windows"))]
 use std::process::Command;
-
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetectedPort {
@@ -31,11 +28,71 @@ struct PROCESSENTRY32W {
 }
 
 #[cfg(target_os = "windows")]
+#[repr(C)]
+#[derive(Copy, Clone)]
+#[allow(non_snake_case)]
+struct MIB_TCPROW_OWNER_PID {
+    dwState: u32,
+    dwLocalAddr: u32,
+    dwLocalPort: u32,
+    dwRemoteAddr: u32,
+    dwRemotePort: u32,
+    dwOwningPid: u32,
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[allow(non_snake_case)]
+struct MIB_TCPTABLE_OWNER_PID {
+    dwNumEntries: u32,
+    table: [MIB_TCPROW_OWNER_PID; 1],
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[derive(Copy, Clone)]
+#[allow(non_snake_case)]
+struct MIB_TCP6ROW_OWNER_PID {
+    ucLocalAddr: [u8; 16],
+    dwLocalScopeId: u32,
+    dwLocalPort: u32,
+    ucRemoteAddr: [u8; 16],
+    dwRemoteScopeId: u32,
+    dwRemotePort: u32,
+    dwState: u32,
+    dwOwningPid: u32,
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[allow(non_snake_case)]
+struct MIB_TCP6TABLE_OWNER_PID {
+    dwNumEntries: u32,
+    table: [MIB_TCP6ROW_OWNER_PID; 1],
+}
+
+#[cfg(target_os = "windows")]
+const AF_INET: u32 = 2;
+#[cfg(target_os = "windows")]
+const AF_INET6: u32 = 23;
+#[cfg(target_os = "windows")]
+const TCP_TABLE_OWNER_PID_LISTENER: i32 = 3;
+
+#[cfg(target_os = "windows")]
+#[link(name = "iphlpapi")]
 extern "system" {
     fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) -> *mut std::ffi::c_void;
     fn Process32FirstW(hSnapshot: *mut std::ffi::c_void, lppe: *mut PROCESSENTRY32W) -> i32;
     fn Process32NextW(hSnapshot: *mut std::ffi::c_void, lppe: *mut PROCESSENTRY32W) -> i32;
     fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+    fn GetExtendedTcpTable(
+        pTcpTable: *mut std::ffi::c_void,
+        pdwSize: *mut u32,
+        bOrder: i32,
+        ulAf: u32,
+        TableClass: i32,
+        Reserved: u32,
+    ) -> u32;
 }
 
 #[cfg(target_os = "windows")]
@@ -117,6 +174,86 @@ pub fn get_process_tree(root_pids: &[u32]) -> (HashSet<u32>, HashMap<u32, String
     (set, HashMap::new())
 }
 
+#[cfg(target_os = "windows")]
+fn get_listening_tcp_ports() -> Vec<(u16, u32)> {
+    let mut ports = Vec::new();
+
+    // 1. Query IPv4 listening sockets
+    let mut size_v4: u32 = 0;
+    unsafe {
+        let _ = GetExtendedTcpTable(
+            std::ptr::null_mut(),
+            &mut size_v4,
+            0,
+            AF_INET,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        );
+        if size_v4 > 0 {
+            let mut buffer_v4: Vec<u8> = vec![0u8; size_v4 as usize];
+            let ret = GetExtendedTcpTable(
+                buffer_v4.as_mut_ptr() as *mut std::ffi::c_void,
+                &mut size_v4,
+                0,
+                AF_INET,
+                TCP_TABLE_OWNER_PID_LISTENER,
+                0,
+            );
+            if ret == 0 {
+                let table = buffer_v4.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
+                let num_entries = (*table).dwNumEntries as usize;
+                let rows_ptr = std::ptr::addr_of!((*table).table) as *const MIB_TCPROW_OWNER_PID;
+                for i in 0..num_entries {
+                    let row = *rows_ptr.add(i);
+                    let port = u16::from_be((row.dwLocalPort & 0xFFFF) as u16);
+                    ports.push((port, row.dwOwningPid));
+                }
+            }
+        }
+    }
+
+    // 2. Query IPv6 listening sockets
+    let mut size_v6: u32 = 0;
+    unsafe {
+        let _ = GetExtendedTcpTable(
+            std::ptr::null_mut(),
+            &mut size_v6,
+            0,
+            AF_INET6,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        );
+        if size_v6 > 0 {
+            let mut buffer_v6: Vec<u8> = vec![0u8; size_v6 as usize];
+            let ret = GetExtendedTcpTable(
+                buffer_v6.as_mut_ptr() as *mut std::ffi::c_void,
+                &mut size_v6,
+                0,
+                AF_INET6,
+                TCP_TABLE_OWNER_PID_LISTENER,
+                0,
+            );
+            if ret == 0 {
+                let table = buffer_v6.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
+                let num_entries = (*table).dwNumEntries as usize;
+                let rows_ptr = std::ptr::addr_of!((*table).table) as *const MIB_TCP6ROW_OWNER_PID;
+                for i in 0..num_entries {
+                    let row = *rows_ptr.add(i);
+                    let port = u16::from_be((row.dwLocalPort & 0xFFFF) as u16);
+                    ports.push((port, row.dwOwningPid));
+                }
+            }
+        }
+    }
+
+    ports
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_listening_tcp_ports() -> Vec<(u16, u32)> {
+    Vec::new()
+}
+
 /// Detects listening TCP ports for the given workspace session root PIDs
 pub fn scan_listening_ports(session_root_pids: &[u32]) -> Vec<DetectedPort> {
     if session_root_pids.is_empty() {
@@ -128,54 +265,16 @@ pub fn scan_listening_ports(session_root_pids: &[u32]) -> Vec<DetectedPort> {
         return Vec::new();
     }
 
-    let mut cmd = Command::new("netstat");
-    cmd.args(["-ano"]);
-    #[cfg(target_os = "windows")]
-    {
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-
-    let output = match cmd.output() {
-        Ok(out) => String::from_utf8_lossy(&out.stdout).to_string(),
-        Err(_) => return Vec::new(),
-    };
+    let raw_ports = get_listening_tcp_ports();
 
     let mut detected: Vec<DetectedPort> = Vec::new();
     let mut seen_ports: HashSet<u16> = HashSet::new();
 
-    for line in output.lines() {
-        if !line.contains("LISTENING") {
-            continue;
-        }
-
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 4 {
-            continue;
-        }
-
-        // parts typically: ["TCP", "0.0.0.0:5173", "0.0.0.0:0", "LISTENING", "12345"]
-        let local_addr = parts[1];
-        let pid_str = parts.last().unwrap_or(&"");
-        let pid = match pid_str.parse::<u32>() {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-
+    for (port, pid) in raw_ports {
         // Only match processes belonging to this session tree
         if !target_pids.contains(&pid) {
             continue;
         }
-
-        // Extract port from local_addr (format: 0.0.0.0:5173 or [::]:5173 or 127.0.0.1:3000)
-        let port_part = match local_addr.rsplit(':').next() {
-            Some(p) => p,
-            None => continue,
-        };
-
-        let port = match port_part.parse::<u16>() {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
 
         // Skip internal/well-known windows service ports, Veron's own server port (4567), and AGY internal RPC/sidecars (3500-3510)
         if port == 135
@@ -211,20 +310,50 @@ pub fn scan_listening_ports(session_root_pids: &[u32]) -> Vec<DetectedPort> {
     detected
 }
 
-/// Open URL in default Windows browser
+/// Open URL in default browser safely
 pub fn open_browser_url(url: &str) -> Result<(), String> {
+    let trimmed = url.trim();
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        return Err("Only http and https URLs are allowed".to_string());
+    }
+
     #[cfg(target_os = "windows")]
     {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/C", "start", "", url]);
-        cmd.creation_flags(CREATE_NO_WINDOW);
-        cmd.spawn().map_err(|e| e.to_string())?;
-        Ok(())
+        extern "system" {
+            fn ShellExecuteW(
+                hwnd: *mut std::ffi::c_void,
+                lpOperation: *const u16,
+                lpFile: *const u16,
+                lpParameters: *const u16,
+                lpDirectory: *const u16,
+                nShowCmd: i32,
+            ) -> isize;
+        }
+
+        let op: Vec<u16> = "open\0".encode_utf16().collect();
+        let target: Vec<u16> = format!("{}\0", trimmed).encode_utf16().collect();
+
+        let res = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                op.as_ptr(),
+                target.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                1, // SW_SHOWNORMAL
+            )
+        };
+
+        if res > 32 {
+            Ok(())
+        } else {
+            Err(format!("ShellExecuteW failed with error code: {}", res))
+        }
     }
     #[cfg(not(target_os = "windows"))]
     {
         Command::new("xdg-open")
-            .arg(url)
+            .arg(trimmed)
             .spawn()
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -246,5 +375,19 @@ mod tests {
         let (tree, names) = get_process_tree(&[std::process::id()]);
         assert!(tree.contains(&std::process::id()));
         assert!(names.contains_key(&std::process::id()));
+    }
+
+    #[test]
+    fn test_open_browser_url_rejects_unsafe_schemes() {
+        assert!(open_browser_url("file:///C:/Windows/win.ini").is_err());
+        assert!(open_browser_url("javascript:alert(1)").is_err());
+        assert!(open_browser_url("calc.exe").is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_get_listening_tcp_ports_win32() {
+        let ports = get_listening_tcp_ports();
+        assert!(!ports.is_empty(), "Should find listening ports via Win32 GetExtendedTcpTable");
     }
 }

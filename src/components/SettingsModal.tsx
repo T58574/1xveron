@@ -14,6 +14,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { CapturesInfo, SystemInfo } from '../types';
+import { copyToGlobalClipboard } from '../services/api';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -61,7 +62,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleCopyToken = () => {
     if (systemInfo?.auth_token) {
-      navigator.clipboard.writeText(systemInfo.auth_token);
+      copyToGlobalClipboard(systemInfo.auth_token);
       setCopiedToken(true);
       setTimeout(() => setCopiedToken(false), 2000);
     }
