@@ -417,6 +417,36 @@
   - `cargo test --manifest-path src-tauri/Cargo.toml`: 19 passed, 0 failed.
   - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings.
 
+### Milestone 25: Динамический движок тем оформления, 14 готовых пресетов, ручная калибровка цвета (HEX/Picker) и ликвидация хардкода amber-цветов
+- **Архитектура движка тем (`src/services/theme.ts`)**:
+  - Создана система типизированных тем `VeronTheme`, `XtermTheme` и конфигурации `ThemeSettings`.
+  - Включено 14 готовых дизайнерских тем:
+    - **10 Темных индустриальных палитр**: *Cybran Amber* (классика Supreme Commander), *Emerald Matrix* (кибер-зеленый), *Cobalt Cyan* (неоновый циан), *Amethyst Synth* (элегантный фиолетовый), *Crimson Void* (глубокий рубиновый), *Solar Gold* (яркое золото), *Velvet Rose* (розово-рубиновый), *Nordic Frost* (ледяной арктический), *Monokai Neon* (культовый лайм), *Titanium Slate* (монохромный холодный титан).
+    - **4 Светлых темы**: *Paper Amber*, *Paper Cobalt*, *Paper Emerald*, *Paper Minimal*.
+  - Внедрена математика динамических цветов: `hexToRgb`, `rgbToHex`, расчет контрастного текста (`getContrastForeground` для автоматического черного/белого шрифта на кнопках), затемнение/осветление и генератор кастомных тем `generateCustomTheme` для любого выбранного акцента.
+  - На лету обновляются CSS-переменные `:root` (`--veron-accent`, `--veron-accent-rgb`, `--veron-accent-hover`, `--veron-accent-fg`, `--veron-border-accent`, `--veron-glow`, `--veron-bg-canvas`, и др.).
+  - Настройки сохраняются в `localStorage` (`veron_theme_settings`) с обратной совместимостью с legacy-ключом `theme`.
+- **Ручная калибровка цвета (Manual Accent Color Tuning)**:
+  - В модальном окне настроек (`SettingsModal.tsx`) создана интерактивная панель ручной настройки:
+    - Нативный HTML5 Color Picker (`<input type="color">`) с мгновенным live preview.
+    - Текстовое поле ввода HEX (`#XXXXXX`) с валидацией и нормализацией.
+    - Быстрый выбор из 12 палитр (Amber, Emerald, Cyan, Sky, Indigo, Purple, Pink, Crimson, Gold, Lime, Slate, Orange).
+    - Кнопка «Сбросить до дефолта темы» для возврата к фирменному цвету пресета.
+    - Живой симулятор курсора терминала (`root@session:~$ █`) в реальном времени.
+- **Интеграция с Tailwind CSS 4 и альфа-прозрачностями**:
+  - `tailwind.config.js` настроен на поддержку CSS-переменных с альфа-каналом: `rgb(var(--veron-accent-rgb) / <alpha-value>)`.
+  - Все классы вида `bg-accent/10`, `border-accent/40`, `ring-accent/70`, `shadow-accent-glow` динамически меняют свой цвет и свечение при изменении темы и кастомного цвета.
+- **Бесшовное переключение тем xterm.js (Zero Terminal Interruption)**:
+  - В `TerminalPane.tsx` и `MobileView.tsx` изменение темы терминала отвязано от инициализации ConPTY и WebSockets. При смене темы или цвета xterm мгновенно перерисовывает буфер через `term.options.theme = activeTheme.xterm` без сброса командной строки и разрыва соединения.
+- **Полная ликвидация хардкода цветов (Amber Refactoring)**:
+  - Проанализированы и рефакторены все компоненты интерфейса: `App.tsx`, `TopBar.tsx`, `Sidebar.tsx`, `TerminalPane.tsx`, `SettingsModal.tsx`, `CreateWorkspaceModal.tsx`, `GitDiffModal.tsx`, `GitDiffPill.tsx`, `RemoteModal.tsx`, `MobileView.tsx`, `PaneSplitter.tsx`, `QuickScriptsModal.tsx`, `AntigravityIcon.tsx`.
+  - Все жестко зашитые классы `amber-400`, `amber-300`, `rgba(245, 158, 11, ...)` заменены на абстрактные токены `accent`, `var(--veron-accent)`, `var(--veron-border-accent)`, `var(--veron-glow)` и `var(--veron-accent-fg)`.
+- **Изоляция в ветке**:
+  - Разработка велась в изолированной ветке `feature/theme-palettes`, исключая конфликты с параллельными задачами второго агента.
+- **Верификация**:
+  - `npm run build`: чистая сборка TypeScript + Vite (1.94с).
+  - `cargo check --manifest-path src-tauri/Cargo.toml`: компиляция бэкенда без ошибок.
+
 ---
 
 ## 5. Инварианты и правила для будущих сессий
