@@ -59,6 +59,18 @@ pub struct GitStatusResponse {
 }
 
 pub fn get_git_status(path: &Path) -> GitStatusResponse {
+    if !path.exists() {
+        return GitStatusResponse {
+            is_git: false,
+            repo_root: None,
+            branch: None,
+            insertions: 0,
+            deletions: 0,
+            files_count: 0,
+            files: vec![],
+        };
+    }
+
     let porcelain = match run_git(&["status", "--porcelain=v1", "-b"], Some(path)) {
         Ok(out) => out,
         Err(_) => {
@@ -187,7 +199,7 @@ pub fn get_git_diff(path: &Path, file: Option<&str>) -> Result<String, String> {
     }
 
     // Try diff HEAD first; if repo has no commits yet, fallback to plain `git diff`
-    match run_git(&args, Some(root_path)) {
+    let res = match run_git(&args, Some(root_path)) {
         Ok(diff) if !diff.is_empty() => Ok(diff),
         _ => {
             let mut fallback_args = vec!["diff"];
@@ -197,7 +209,31 @@ pub fn get_git_diff(path: &Path, file: Option<&str>) -> Result<String, String> {
             }
             run_git(&fallback_args, Some(root_path))
         }
+    };
+
+    if let Ok(ref diff_str) = res {
+        if !diff_str.is_empty() {
+            return Ok(diff_str.clone());
+        }
     }
+
+    // If file was specified and diff is empty, check if it's an untracked file
+    if let Some(f) = file {
+        let file_path = root_path.join(f);
+        if file_path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&file_path) {
+                let lines: Vec<&str> = content.lines().collect();
+                let line_count = lines.len();
+                let body = lines.into_iter().map(|l| format!("+{}", l)).collect::<Vec<_>>().join("\n");
+                return Ok(format!(
+                    "--- /dev/null\n+++ b/{}\n@@ -0,0 +1,{} @@\n{}",
+                    f, line_count, body
+                ));
+            }
+        }
+    }
+
+    res
 }
 
 pub fn get_git_branches(path: &Path) -> Result<Vec<String>, String> {
@@ -309,5 +345,12 @@ mod tests {
         let cur = std::env::current_dir().unwrap();
         let branches = get_git_branches(&cur).unwrap();
         assert!(branches.contains(&"main".to_string()));
+    }
+
+    #[test]
+    fn test_git_diff() {
+        let cur = std::env::current_dir().unwrap();
+        let diff = get_git_diff(&cur, None);
+        assert!(diff.is_ok());
     }
 }
