@@ -150,29 +150,43 @@ All endpoints require authentication via Bearer token:
 ```
 veron/
 ├── GEMINI.md                  # <-- You are here (Core agent onboarding guide)
-├── README.md                  # User-facing manual, feature list, and quickstart
+├── README.md                  # User-facing manual, feature list, and showcase
 ├── PROJECT_STATE.md           # Architecture status, test matrix, and changelog
-├── veron.exe                  # Standalone portable binary (Release build, 3.7 MB)
+├── veron.exe                  # Standalone portable binary (Release build, ~3.7 MB)
 ├── package.json               # Frontend dependencies & scripts
 ├── vite.config.ts             # Vite build configuration
 ├── tailwind.config.js         # Tailwind styling tokens
-├── src/                       # React 19 Frontend
+├── tsconfig.json              # TypeScript root configuration
+├── public/                    # Static web assets served as-is (e.g. veron-icon.svg)
+│   └── veron-icon.svg         # Official Cybran Amber vector favicon
+├── docs/                      # Documentation & showcase media
+│   ├── screenshots/           # UI captures for README and documentation
+│   └── references/            # Design & architectural references
+├── src/                       # React 18 Frontend
 │   ├── App.tsx                # Main container, layout orchestrator, split panels
 │   ├── main.tsx               # Application root
 │   ├── components/
-│   │   ├── TerminalView.tsx   # xterm.js instance with WebGL + FitAddon & history
-│   │   ├── SessionSidebar.tsx # Session list, status indicators, process controls
-│   │   ├── QuickScripts.tsx   # Quick clipboard screenshot capture & script trigger
-│   │   └── Header.tsx         # Brand header, auth token display, new session modal
-│   └── lib/
-│       └── api.ts             # REST & WebSocket client with auth injection
+│   │   ├── TerminalPane.tsx   # xterm.js instance with WebGL + FitAddon & ConPTY stream
+│   │   ├── Sidebar.tsx        # Session list, workspaces, captures counter, explorer trigger
+│   │   ├── TopBar.tsx         # Grid selector (1-6), layout controls, active session status
+│   │   ├── MobileView.tsx     # Fullscreen couch mode & developer touch bar
+│   │   ├── QuickScriptsModal.tsx # Command palette (Ctrl+K) & presets
+│   │   ├── SettingsModal.tsx  # Keyboard shortcuts, theme, AGY mode toggles
+│   │   ├── RemoteModal.tsx    # Mobile LAN IP & QR code authorization modal
+│   │   ├── GitDiffModal.tsx   # Live git diff inspector & branch status
+│   │   └── PortIndicator.tsx  # Active local port detection & scanner
+│   └── services/
+│       └── api.ts             # REST & WebSocket client with 4-tier clipboard engine
 ├── src-tauri/                 # Rust Core & Desktop Engine
 │   ├── Cargo.toml             # Rust dependencies (Axum, Tokio, Tao, Wry, rust-embed)
 │   └── src/
 │       ├── main.rs            # Desktop Tao event loop + Axum server runner
 │       ├── server.rs          # Axum routes, WebSocket broker, static asset fallback
 │       ├── session.rs         # SessionManager, history ring buffer, process state
-│       └── pty.rs             # ConPTY abstraction & Windows tree termination
+│       ├── pty.rs             # ConPTY abstraction & Windows tree termination
+│       ├── ports.rs           # Win32 TCP port listener & process mapper
+│       ├── git.rs             # Native git status & diff parser
+│       └── clipboard.rs       # Win32 native clipboard API integration
 ```
 
 ---

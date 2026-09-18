@@ -4,6 +4,10 @@
 
 Вдохновлен лучшими идеями **BridgeMind** и **Warp.dev**, но без оверинжиниринга, без «нейрослопа» и без навязанных облачных телеметрий.
 
+<p align="center">
+  <img src="docs/screenshots/veron_cybran_3panes.png" alt="Veron 3-Pane Layout in Cybran Amber Theme" width="850">
+</p>
+
 ---
 
 ## 🌟 Ключевые возможности
@@ -24,6 +28,10 @@
 - **Slot Persistence**: фиксированные слоты — при закрытии окна соседние терминалы не скачут и не сдвигаются.
 - **Интуитивный сплит**: кнопка `[+]` внутри карточки терминала автоматически расширяет сетку и запускает новый шелл.
 - **Переименование по дабл-клику**: дважды кликни по названию терминала в шапке (например, переименуй `PowerShell` в `Vite Dev` или `Docker DB`), имя синхронизируется везде.
+
+<p align="center">
+  <img src="docs/screenshots/veron_cybran_desktop_active.png" alt="Veron Grid with Active Sessions" width="850">
+</p>
 
 ### 3. Быстрые скрипты и Командная палитра (`Ctrl+K` / `⌘K`)
 - Вызывается по шорткату **`Ctrl+K`** или кнопке **Scripts** в шапке:
@@ -51,6 +59,11 @@
   - Верхний переключатель сессий ПК.
   - Нижний тулбар разработчика: `[ESC]`, `[TAB]`, `[CTRL+C]`, `[CTRL+Z]`, стрелки `[▲] [▼] [◀] [▶]`, `[Clear]`, `[↵]`.
   - Поле ввода команд с поддержкой виртуальной клавиатуры и отслеживанием `visualViewport`.
+
+<p align="center">
+  <img src="docs/screenshots/veron_qr_modal.png" alt="Veron Phone Remote QR Modal" width="410">&nbsp;
+  <img src="docs/screenshots/veron_mobile_couch_mode.png" alt="Veron Mobile Couch Mode" width="410">
+</p>
 
 ---
 
