@@ -354,6 +354,36 @@
   - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings.
   - `npm run build`: чистая сборка TypeScript + Vite за 1.8с без варнингов.
 
+### Milestone 23: Современная кинематика интерфейса: Apple-grade плавность, морфинг сайдбара и микро-взаимодействия
+- **Дизайн-токены анимаций и кинематические кривые (`tailwind.config.js`, `src/index.css`)**:
+  - Внедрены кастомные кубические кривые Безье: `ease-apple` (`cubic-bezier(0.16, 1, 0.3, 1)`) и пружинная `ease-spring` (`cubic-bezier(0.34, 1.56, 0.64, 1)`).
+  - Настроены GPU-ускоренные кейфреймы без внешних тяжелых библиотек:
+    - `dialog-in`: плавное масштабирование модальных окон с `scale(0.96)` до `scale(1)` с микро-подъемом (`translateY(-4px)`).
+    - `overlay-in`: мягкое затемнение и нарастание `backdrop-blur-md` (0.24s).
+    - `dropdown-in`: аккуратный разворот выпадающих списков из точки привязки (`origin-top-left` / `origin-top-right`).
+    - `toast-slide`: появление уведомлений с мягким выездом снизу (`translateY(12px) -> translateY(0)`).
+  - Добавлен тактильный класс `.press-scale` (`active:scale-[0.97]` с `ease-apple`), придающий кликам по кнопкам, бейджам и табам отзывчивый «физический» отклик уровня macOS/Linear.
+- **Бесшовный морфинг сайдбара без перемонтирования DOM (`Sidebar.tsx`)**:
+  - Устранена первопричина топорного переключения — полное удаление и создание заново DOM-дерева сайдбара.
+  - Сайдбар переведен на единый анимированный контейнер с плавной интерполяцией ширины `transition-[width] duration-300 ease-apple` (`w-64` <-> `w-14`).
+  - Заголовок, поисковая строка сессий, список воркспейсов и нижние тулзы плавно затухают и сворачиваются (`opacity-100` / `opacity-0` + `pointer-events-none`) без рывков контента.
+- **Плавные модальные окна с размытием (`SettingsModal`, `QuickScriptsModal`, `CreateWorkspaceModal`, `RemoteModal`, `GitDiffModal`)**:
+  - Все модалки оснащены аппаратным ускорением, оверлеем `animate-overlay-in` с матовым блюром (`backdrop-blur-md bg-black/70`) и центрированным контейнером `animate-dialog-in`.
+  - Кнопки выбора категорий, сохранения настроек и действий в diff получили тактильный отклик `.press-scale`.
+- **Эргономика селектора сеток и шапки (`TopBar.tsx`)**:
+  - Сегментированный переключатель сеток (1–6) переведен на мягкий транзишн активного состояния (`transition-all duration-200 ease-apple press-scale`).
+  - Выпадающие списки выбора воркспейсов и запуска шеллов анимированы через `animate-dropdown-in` с привязкой к своим кнопкам вызова.
+  - Кнопки тулбара (Quick Scripts, Phone Remote, Theme Toggle) получили тактильную реакцию на нажатие.
+- **Плавная сетка терминалов и фокус (`TerminalPane.tsx`, `App.tsx`)**:
+  - Обертка терминала получила плавный переход рамок, колец фокуса и теней (`transition-all duration-300 ease-apple`).
+  - Сетка окон в `renderGridLayout()` адаптируется плавно при смене раскладки 1–6 без скачков.
+  - Пустые слоты (включая Empty AGY Slot) оформлены мягким градиентным бордером с ховером `hover:border-amber-400/30 hover:bg-[#0d0e13]/80`.
+  - Всплывающие тосты переведены на `animate-toast-in`.
+- **Верификация**:
+  - `npm run build`: чистая сборка TypeScript + Vite (2.96с).
+  - `cargo test --manifest-path src-tauri/Cargo.toml`: 19 passed, 0 failed.
+  - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings.
+
 ---
 
 ## 5. Инварианты и правила для будущих сессий
