@@ -324,6 +324,36 @@
   - `npm run build`: чистая сборка TypeScript + Vite за 1.8с.
   - Проверено сохранение работы запущенного экземпляра `veron.exe`.
 
+### Milestone 22: Self-Improve Loop: Ring Buffer O(1), Auto-Reconnect WS, Debounced Resize, Ctrl+Shift+T Split & Bundle Splitting
+- **Кольцевой буфер истории сессий O(1) (`VecDeque<u8>`)**:
+  - В `src-tauri/src/session.rs` история терминала переведена с `Vec<u8>` на `std::collections::VecDeque<u8>`.
+  - Устранено тяжелое копирование памяти (`memmove` до 512 КБ на каждый PTY-чанк) при переполнении буфера — отсечение устаревших байтов через `drain(0..trim)` теперь работает за амортизированное $O(1)$ без смещения массива.
+  - Добавлен модульный тест `test_history_ring_buffer_bounded_size`.
+- **WebSocket Keepalive Heartbeat & Защита от зависших соединений**:
+  - В `src-tauri/src/server.rs` (`handle_terminal_socket`) добавлен 25-секундный таймер `tokio::time::interval`, отправляющий ping-фреймы в клиентский WebSocket.
+  - При обрыве соединения на телефоне или засыпании устройства задача передачи мгновенно завершается, предотвращая накопление брошенных broadcast-подписчиков.
+- **Отказоустойчивый Auto-Reconnect WebSocket на клиенте**:
+  - В `TerminalPane.tsx` и `MobileView.tsx` внедрен механизм переподключения с экспоненциальной задержкой (от 1 до 8 секунд) при аварийном разрыве соединения (`event.code !== 1000`).
+  - Добавлены слушатели событий `window.addEventListener('online')` и `document.addEventListener('visibilitychange')`: при возвращении на вкладку или разблокировке смартфона WebSocket переподключается мгновенно без необходимости обновлять страницу вручную.
+  - Перед воспроизведением истории терминала вызывается `term.reset()`, исключая дублирование экрана.
+- **Дебаунсинг ресайза ConPTY (`ResizeObserver`)**:
+  - Запросы на изменение геометрии ConPTY (`ws.send({ type: 'resize' })`) дебаунсированы с задержкой 60–80 мс, исключая фризы и спам ConPTY-буфера Windows при плавной анимации окон и изменении размеров.
+  - Устранен дублирующийся `useEffect` автофокуса в `TerminalPane.tsx`.
+- **Моментальный сплит текущей панели (`Ctrl+Shift+T` / `Ctrl+Shift+D`)**:
+  - Перехвачены комбинации `Ctrl+Shift+T` и `Ctrl+Shift+D` на любой раскладке клавиатуры, мгновенно добавляющие новый терминал в текущий воркспейс и адаптирующие сетку.
+  - В модальное окно настроек (`SettingsModal.tsx`) добавлен интерактивный раздел со списком горячих клавиш.
+- **Синтетический Unified Diff для новых файлов (`src-tauri/src/git.rs`)**:
+  - Добавлена ранняя проверка существования пути `!path.exists()` в `get_git_status`.
+  - В `get_git_diff` реализована генерация валидного unified diff для неотслеживаемых (untracked `?`) файлов, позволяя инспектировать новые файлы прямо в `GitDiffModal`.
+  - Добавлен модульный тест `test_git_diff`.
+- **Оптимизация бандла Vite (`vite.config.ts`)**:
+  - Настроено разделение чанков через `manualChunks`: вынесены `xterm` (`@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-webgl`) и `vendor` (`react`, `react-dom`, `lucide-react`).
+  - Размер основного бандла приложения уменьшился с 695 КБ до 144 КБ, полностью устранено предупреждение Vite об оверсайзе.
+- **Верификация**:
+  - `cargo test --manifest-path src-tauri/Cargo.toml`: 19 passed, 0 failed.
+  - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings.
+  - `npm run build`: чистая сборка TypeScript + Vite за 1.8с без варнингов.
+
 ---
 
 ## 5. Инварианты и правила для будущих сессий
@@ -349,6 +379,6 @@
 
 ## 6. Дорожная карта на будущее (Next Milestones)
 
-1. **Ctrl+Shift+T**: моментальный сплит текущей панели.
-2. **Auto-reconnect WebSocket**: адаптивное переподключение с экспоненциальной задержкой при временной потере сети на мобильных клиентах.
+1. **Session Export / Logging**: экспорт буфера активной сессии в `.log` или `.txt` файл из контекстного меню.
+2. **Terminal Search / Find**: встроенная строка поиска по буферу терминала (`Ctrl+F`).
 
