@@ -3,6 +3,8 @@ name = "veron-server"
 version = "0.1.0"
 description = "Veron Terminal Multiplexer Core"
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/T58574/1xveron"
 
 [[bin]]
 name = "veron"

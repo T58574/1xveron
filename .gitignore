@@ -9,17 +9,21 @@ src-tauri/target/
 target/
 **/*.rs.bk
 *.exe
+*.old.exe
+*.pdb
 *.WebView2/
-
 
 # CodeGuardian & Local Analysis
 .codeguardian/
 
-# Veron Captures & Cache
+# Veron Captures, Worktrees & Cache
 .veron/captures/*
 !.veron/captures/.gitkeep
+.veron/worktrees/
 .veron/*.log
 .veron/*.json
+.veron/cache/
+.veron/tmp/
 
 # Environment variables
 .env
