@@ -1,7 +1,7 @@
 use crate::pty::PtyInstance;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -56,7 +56,7 @@ pub struct Session {
     pub cwd: String,
     pub workspace_id: String,
     pub created_at: i64,
-    pub history: Arc<Mutex<Vec<u8>>>,
+    pub history: Arc<Mutex<VecDeque<u8>>>,
     pub output_tx: broadcast::Sender<Vec<u8>>,
     pub pty: Arc<Mutex<PtyInstance>>,
 }
@@ -359,7 +359,7 @@ impl SessionManager {
         });
 
         let (output_tx, mut output_rx) = broadcast::channel(1024);
-        let history = Arc::new(Mutex::new(Vec::new()));
+        let history = Arc::new(Mutex::new(VecDeque::with_capacity(MAX_HISTORY_BYTES)));
         let history_clone = history.clone();
 
         // Spawn PTY
@@ -371,13 +371,13 @@ impl SessionManager {
             output_tx.clone(),
         )?;
 
-        // Maintain history buffer in background task
+        // Maintain history buffer in background task (O(1) ring buffer)
         tokio::spawn(async move {
             loop {
                 match output_rx.recv().await {
                     Ok(data) => {
                         let mut hist = history_clone.lock();
-                        hist.extend_from_slice(&data);
+                        hist.extend(data);
                         if hist.len() > MAX_HISTORY_BYTES {
                             let trim = hist.len() - MAX_HISTORY_BYTES;
                             hist.drain(0..trim);
@@ -893,6 +893,34 @@ mod tests {
         assert!(list2.iter().any(|w| w.name == "Project Alpha"), "Workspace should persist on disk");
 
         let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_history_ring_buffer_bounded_size() {
+        let max_size = 1024;
+        let mut hist: std::collections::VecDeque<u8> = std::collections::VecDeque::with_capacity(max_size);
+        
+        // Push 1500 bytes (exceeding 1024)
+        let chunk1 = vec![b'A'; 800];
+        let chunk2 = vec![b'B'; 700];
+        
+        hist.extend(chunk1);
+        if hist.len() > max_size {
+            let trim = hist.len() - max_size;
+            hist.drain(0..trim);
+        }
+        
+        hist.extend(chunk2);
+        if hist.len() > max_size {
+            let trim = hist.len() - max_size;
+            hist.drain(0..trim);
+        }
+
+        assert_eq!(hist.len(), max_size);
+        let contiguous = hist.make_contiguous();
+        // The last 700 bytes must be 'B', and the first 324 bytes must be 'A'
+        assert_eq!(&contiguous[max_size - 700..], &vec![b'B'; 700][..]);
+        assert_eq!(&contiguous[..max_size - 700], &vec![b'A'; 324][..]);
     }
 }
 

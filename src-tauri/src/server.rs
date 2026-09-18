@@ -958,9 +958,9 @@ async fn handle_terminal_socket(
 
     // 1. Send scrollback history to client
     let initial_hist = {
-        let guard = session.history.lock();
+        let mut guard = session.history.lock();
         if !guard.is_empty() {
-            Some(guard.clone())
+            Some(guard.make_contiguous().to_vec())
         } else {
             None
         }
@@ -975,20 +975,33 @@ async fn handle_terminal_socket(
     let session_id = session.id.clone();
     let session_id_clone = session_id.clone();
 
-    // Task to forward PTY output -> WebSocket
+    // Task to forward PTY output -> WebSocket (with 25s heartbeat ping)
     let mut send_task = tokio::spawn(async move {
+        let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(25));
+        // First tick completes immediately, skip it so we don't send a ping right at connection start
+        ping_interval.tick().await;
+
         loop {
-            match pty_rx.recv().await {
-                Ok(data) => {
-                    if ws_sender.send(Message::Binary(data)).await.is_err() {
+            tokio::select! {
+                res = pty_rx.recv() => {
+                    match res {
+                        Ok(data) => {
+                            if ws_sender.send(Message::Binary(data)).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(missed)) => {
+                            tracing::warn!("Terminal WS stream lagged by {} messages", missed);
+                            continue;
+                        }
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+                _ = ping_interval.tick() => {
+                    if ws_sender.send(Message::Ping(vec![])).await.is_err() {
                         break;
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(missed)) => {
-                    tracing::warn!("Terminal WS stream lagged by {} messages", missed);
-                    continue;
-                }
-                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
     });
