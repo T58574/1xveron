@@ -12,5 +12,13 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          xterm: ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-webgl'],
+          vendor: ['react', 'react-dom', 'lucide-react'],
+        },
+      },
+    },
   },
 });

@@ -12,6 +12,7 @@ import {
   Check,
   Shield,
   Bot,
+  Keyboard,
 } from 'lucide-react';
 import { CapturesInfo, SystemInfo } from '../types';
 import { copyToGlobalClipboard } from '../services/api';
@@ -322,7 +323,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section 4: System Info / Build */}
+          {/* Section 4: Keyboard Shortcuts */}
+          <div>
+            <div className="flex items-center gap-2 mb-2.5">
+              <Keyboard className="w-3.5 h-3.5 text-amber-400" />
+              <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+                Keyboard Shortcuts
+              </label>
+            </div>
+            <div className="p-3 rounded-xl bg-[#0c0d12] border border-white/[0.06] flex flex-col gap-2 text-xs">
+              <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                <span className="text-zinc-400">Command Palette / Quick Scripts</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-amber-300 font-mono text-[11px]">Ctrl + K</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                <span className="text-zinc-400">Instant Split / New Pane</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-amber-300 font-mono text-[11px]">Ctrl + Shift + T</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                <span className="text-zinc-400">Switch Quadrant / Pane</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-amber-300 font-mono text-[11px]">Alt + 1..6</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                <span className="text-zinc-400">Maximize / Restore Active Pane</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-amber-300 font-mono text-[11px]">Alt + M</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                <span className="text-zinc-400">Close Active Pane</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-amber-300 font-mono text-[11px]">Alt + W</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                <span className="text-zinc-400">Multi-line Prompt (AGY / REPL)</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-amber-300 font-mono text-[11px]">Ctrl + Enter</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1">
+                <span className="text-zinc-400">Smart Copy Selection / Paste</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-amber-300 font-mono text-[11px]">Ctrl+C / Ctrl+V</kbd>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 5: System Info / Build */}
           <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-zinc-500">
             <span>VERON Terminal Workspace v0.1.0</span>
             <span>ConPTY & Cybran Amber</span>

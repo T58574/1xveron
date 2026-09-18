@@ -212,7 +212,22 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           return false;
         }
 
-        // 5. Alt+1..6, Alt+W, Alt+M -> propagate to window for global quadrant switching & closing
+        // 5. Ctrl+Shift+T or Ctrl+Shift+D -> propagate to window for instant split / new pane
+        const isTKey =
+          event.key.toLowerCase() === 't' ||
+          event.code === 'KeyT' ||
+          event.key === 'е' ||
+          event.key === 'Е';
+        const isDKey =
+          event.key.toLowerCase() === 'd' ||
+          event.code === 'KeyD' ||
+          event.key === 'в' ||
+          event.key === 'В';
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && (isTKey || isDKey)) {
+          return false;
+        }
+
+        // 6. Alt+1..6, Alt+W, Alt+M -> propagate to window for global quadrant switching & closing
         if (event.altKey) {
           const isQuadrant = event.key >= '1' && event.key <= '6';
           const isAction = event.key.toLowerCase() === 'w' || event.key.toLowerCase() === 'm';
@@ -233,21 +248,81 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    const wsUrl = getWsUrl(session.id);
-    const ws = new WebSocket(wsUrl);
-    ws.binaryType = 'arraybuffer';
-    wsRef.current = ws;
+    let isDisposed = false;
+    let reconnectTimeout: any = null;
+    let retryCount = 0;
+    let resizeTimeout: any = null;
+    let isFirstConnect = true;
 
-    ws.onopen = () => {
-      setTimeout(() => {
-        try {
-          fitAddon.fit();
-          if (term.rows && term.cols) {
-            ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-          }
-        } catch {}
-      }, 50);
+    const connectWs = () => {
+      if (isDisposed) return;
+      const wsUrl = getWsUrl(session.id);
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        retryCount = 0;
+        if (!isFirstConnect) {
+          // Reconnection occurred: reset terminal before scrollback history is replayed
+          term.reset();
+        }
+        isFirstConnect = false;
+
+        setTimeout(() => {
+          if (isDisposed) return;
+          try {
+            fitAddon.fit();
+            if (term.rows && term.cols && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+            }
+          } catch {}
+        }, 50);
+      };
+
+      ws.onmessage = (event) => {
+        if (typeof event.data === 'string') {
+          term.write(event.data);
+        } else if (event.data instanceof ArrayBuffer) {
+          term.write(new Uint8Array(event.data));
+        }
+        if (isAntigravity) {
+          setIsAwaitingInput(false);
+          clearTimeout(checkInputTimer);
+          checkInputTimer = setTimeout(checkAwaitingInput, 600);
+        }
+      };
+
+      ws.onclose = (event) => {
+        if (isDisposed) return;
+        // If closed abnormally (e.g. sleep/wake, Wi-Fi loss, server restart), reconnect with backoff
+        if (event.code !== 1000) {
+          const delay = Math.min(1000 * Math.pow(1.5, retryCount), 8000);
+          retryCount++;
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(connectWs, delay);
+        }
+      };
+
+      ws.onerror = () => {
+        // ws.onclose handles scheduling reconnection
+      };
     };
+
+    connectWs();
+
+    // Reconnect immediately when user switches back to tab or device comes online
+    const handleOnlineOrVisible = () => {
+      if (isDisposed) return;
+      if (document.visibilityState === 'visible') {
+        if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+          clearTimeout(reconnectTimeout);
+          connectWs();
+        }
+      }
+    };
+    window.addEventListener('online', handleOnlineOrVisible);
+    document.addEventListener('visibilitychange', handleOnlineOrVisible);
 
     const onBellDisposable = term.onBell(() => {
       setIsBelling(true);
@@ -277,22 +352,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       } catch {}
     };
 
-    ws.onmessage = (event) => {
-      if (typeof event.data === 'string') {
-        term.write(event.data);
-      } else if (event.data instanceof ArrayBuffer) {
-        term.write(new Uint8Array(event.data));
-      }
-      if (isAntigravity) {
-        setIsAwaitingInput(false);
-        clearTimeout(checkInputTimer);
-        checkInputTimer = setTimeout(checkAwaitingInput, 600);
-      }
-    };
-
     const onDataDisposable = term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'input', data }));
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'input', data }));
       }
       if (isAntigravity) {
         setIsAwaitingInput(false);
@@ -302,30 +364,33 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     const resizeObserver = new ResizeObserver(() => {
       try {
         fitAddon.fit();
-        if (ws.readyState === WebSocket.OPEN && term.rows && term.cols) {
-          ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-        }
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          if (isDisposed) return;
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && term.rows && term.cols) {
+            wsRef.current.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+          }
+        }, 60);
       } catch {}
     });
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      isDisposed = true;
+      clearTimeout(reconnectTimeout);
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('online', handleOnlineOrVisible);
+      document.removeEventListener('visibilitychange', handleOnlineOrVisible);
       resizeObserver.disconnect();
       clearTimeout(checkInputTimer);
       onBellDisposable.dispose();
       onDataDisposable.dispose();
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        wsRef.current.close(1000);
       }
       term.dispose();
     };
   }, [session?.id, theme, isAntigravity]);
-
-  useEffect(() => {
-    if (isActive && termRef.current) {
-      termRef.current.focus();
-    }
-  }, [isActive]);
 
   const processAndUploadImage = async (imageFile: File | Blob) => {
     if (!session || isUploadingRef.current) return;

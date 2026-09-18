@@ -504,19 +504,37 @@ export const App: React.FC = () => {
 
   // Global Keyboard Shortcuts:
   // - Ctrl+K / Cmd+K: Quick Scripts modal
+  // - Ctrl+Shift+T / Ctrl+Shift+D: Instant split / new terminal pane
   // - Alt+1..6: Focus quadrant / pane 1..6
   // - Alt+M: Toggle maximize / restore current active pane
   // - Alt+W: Close active session in current slot
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 1. Quick Scripts: Ctrl+K / Cmd+K
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsQuickScriptsOpen((prev) => !prev);
         return;
       }
 
-      // 2. Alt + 1..6: Switch active pane
+      // 2. Instant Split / New Pane: Ctrl+Shift+T / Ctrl+Shift+D
+      const isTKey =
+        e.key.toLowerCase() === 't' ||
+        e.code === 'KeyT' ||
+        e.key === 'е' ||
+        e.key === 'Е';
+      const isDKey =
+        e.key.toLowerCase() === 'd' ||
+        e.code === 'KeyD' ||
+        e.key === 'в' ||
+        e.key === 'В';
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (isTKey || isDKey)) {
+        e.preventDefault();
+        handleSplitPane();
+        return;
+      }
+
+      // 3. Alt + 1..6: Switch active pane
       if (e.altKey && e.key >= '1' && e.key <= '6') {
         e.preventDefault();
         const slotIdx = parseInt(e.key, 10) - 1;
@@ -528,7 +546,7 @@ export const App: React.FC = () => {
         return;
       }
 
-      // 3. Alt + M: Toggle maximize active pane
+      // 4. Alt + M: Toggle maximize active pane
       if (e.altKey && e.key.toLowerCase() === 'm') {
         e.preventDefault();
         setMaximizedPaneIndex((prev) => (prev === activePaneIndex ? null : activePaneIndex));
@@ -540,7 +558,7 @@ export const App: React.FC = () => {
         return;
       }
 
-      // 4. Alt + W: Close active session in current slot
+      // 5. Alt + W: Close active session in current slot
       if (e.altKey && e.key.toLowerCase() === 'w') {
         e.preventDefault();
         const sid = currentSlots[activePaneIndex];
@@ -555,7 +573,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activePaneIndex, maximizedPaneIndex, currentSlots]);
+  }, [activePaneIndex, maximizedPaneIndex, currentSlots, activeWorkspaceSessions.length, currentLayoutMode]);
 
   const handleClearCaptures = async () => {
     try {

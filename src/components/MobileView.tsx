@@ -157,33 +157,78 @@ export const MobileView: React.FC<MobileViewProps> = ({
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    const wsUrl = getWsUrl(activeSession.id);
-    const ws = new WebSocket(wsUrl);
-    ws.binaryType = 'arraybuffer';
-    wsRef.current = ws;
+    let isDisposed = false;
+    let reconnectTimeout: any = null;
+    let retryCount = 0;
+    let resizeTimeout: any = null;
+    let isFirstConnect = true;
 
-    ws.onopen = () => {
-      setTimeout(() => {
-        try {
-          fitAddon.fit();
-          if (term.rows && term.cols) {
-            ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-          }
-        } catch {}
-      }, 100);
+    const connectWs = () => {
+      if (isDisposed) return;
+      const wsUrl = getWsUrl(activeSession.id);
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        retryCount = 0;
+        if (!isFirstConnect) {
+          term.reset();
+        }
+        isFirstConnect = false;
+
+        setTimeout(() => {
+          if (isDisposed) return;
+          try {
+            fitAddon.fit();
+            if (term.rows && term.cols && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+            }
+          } catch {}
+        }, 100);
+      };
+
+      ws.onmessage = (event) => {
+        if (typeof event.data === 'string') {
+          term.write(event.data);
+        } else if (event.data instanceof ArrayBuffer) {
+          term.write(new Uint8Array(event.data));
+        }
+      };
+
+      ws.onclose = (event) => {
+        if (isDisposed) return;
+        if (event.code !== 1000) {
+          const delay = Math.min(1000 * Math.pow(1.5, retryCount), 8000);
+          retryCount++;
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(connectWs, delay);
+        }
+      };
+
+      ws.onerror = () => {
+        // ws.onclose handles reconnect scheduling
+      };
     };
 
-    ws.onmessage = (event) => {
-      if (typeof event.data === 'string') {
-        term.write(event.data);
-      } else if (event.data instanceof ArrayBuffer) {
-        term.write(new Uint8Array(event.data));
+    connectWs();
+
+    // Reconnect immediately when user switches back to browser tab or phone wakes up
+    const handleOnlineOrVisible = () => {
+      if (isDisposed) return;
+      if (document.visibilityState === 'visible') {
+        if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+          clearTimeout(reconnectTimeout);
+          connectWs();
+        }
       }
     };
+    window.addEventListener('online', handleOnlineOrVisible);
+    document.addEventListener('visibilitychange', handleOnlineOrVisible);
 
     term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'input', data }));
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'input', data }));
       }
     });
 
@@ -233,21 +278,32 @@ export const MobileView: React.FC<MobileViewProps> = ({
     const resizeObserver = new ResizeObserver(() => {
       try {
         fitAddon.fit();
-        if (ws.readyState === WebSocket.OPEN && term.rows && term.cols) {
-          ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-        }
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          if (isDisposed) return;
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && term.rows && term.cols) {
+            wsRef.current.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+          }
+        }, 80);
       } catch {}
     });
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      isDisposed = true;
+      clearTimeout(reconnectTimeout);
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('online', handleOnlineOrVisible);
+      document.removeEventListener('visibilitychange', handleOnlineOrVisible);
       resizeObserver.disconnect();
       if (container) {
         container.removeEventListener('paste', handleNativePaste, { capture: true });
         container.removeEventListener('copy', handleNativeCopy, { capture: true });
         container.removeEventListener('mouseup', handleMouseUp);
       }
-      if (ws.readyState === WebSocket.OPEN) ws.close();
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        wsRef.current.close(1000);
+      }
       term.dispose();
     };
   }, [activeSession?.id, theme]);
