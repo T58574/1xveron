@@ -37,8 +37,38 @@ export default {
       },
       transitionTimingFunction: {
         'apple': 'cubic-bezier(0.16, 1, 0.3, 1)',
-      }
+        'spring': 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+      },
+      keyframes: {
+        'dialog-in': {
+          '0%': { opacity: '0', transform: 'scale(0.96) translateY(10px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+        },
+        'overlay-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        'dropdown-in': {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(-6px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+        },
+        'toast-slide': {
+          '0%': { opacity: '0', transform: 'translateY(14px) scale(0.96)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        'amber-pulse': {
+          '0%, 100%': { borderColor: 'rgba(245, 158, 11, 0.25)', boxShadow: '0 0 12px rgba(245, 158, 11, 0.08)' },
+          '50%': { borderColor: 'rgba(245, 158, 11, 0.55)', boxShadow: '0 0 22px rgba(245, 158, 11, 0.22)' },
+        },
+      },
+      animation: {
+        'dialog-in': 'dialog-in 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'overlay-in': 'overlay-in 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'dropdown-in': 'dropdown-in 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'toast-in': 'toast-slide 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'amber-pulse': 'amber-pulse 2.4s ease-in-out infinite',
+      },
     },
   },
   plugins: [],
-}
+};

@@ -786,14 +786,14 @@ export const App: React.FC = () => {
     switch (currentLayoutMode) {
       case 1:
         return (
-          <div className="flex-1 flex w-full h-full min-h-0 min-w-0">
+          <div className="flex-1 flex w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
             {renderPane(0)}
           </div>
         );
 
       case 2:
         return (
-          <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0">
+          <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
             {[0, 1].map(renderPane)}
           </div>
         );
@@ -801,11 +801,11 @@ export const App: React.FC = () => {
       case 3:
         // 1 tall left + 2 stacked right
         return (
-          <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0">
-            <div className="flex-1 flex min-w-0 min-h-0">
+          <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
+            <div className="flex-1 flex min-w-0 min-h-0 transition-all duration-300 ease-apple">
               {renderPane(0)}
             </div>
-            <div className="flex-1 flex flex-col gap-2 min-w-0 min-h-0">
+            <div className="flex-1 flex flex-col gap-2 min-w-0 min-h-0 transition-all duration-300 ease-apple">
               {[1, 2].map(renderPane)}
             </div>
           </div>
@@ -814,7 +814,7 @@ export const App: React.FC = () => {
       case 4:
         // 2x2 Grid
         return (
-          <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 w-full h-full min-h-0 min-w-0">
+          <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
             {[0, 1, 2, 3].map(renderPane)}
           </div>
         );
@@ -822,11 +822,11 @@ export const App: React.FC = () => {
       case 5:
         // 2 on top, 3 on bottom
         return (
-          <div className="flex-1 flex flex-col gap-2 w-full h-full min-h-0 min-w-0">
-            <div className="flex-1 flex gap-2 min-h-0 min-w-0">
+          <div className="flex-1 flex flex-col gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
+            <div className="flex-1 flex gap-2 min-h-0 min-w-0 transition-all duration-300 ease-apple">
               {[0, 1].map(renderPane)}
             </div>
-            <div className="flex-1 flex gap-2 min-h-0 min-w-0">
+            <div className="flex-1 flex gap-2 min-h-0 min-w-0 transition-all duration-300 ease-apple">
               {[2, 3, 4].map(renderPane)}
             </div>
           </div>
@@ -835,7 +835,7 @@ export const App: React.FC = () => {
       case 6:
         // 2 rows of 3 columns (2x3 Grid)
         return (
-          <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-2 w-full h-full min-h-0 min-w-0">
+          <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
             {[0, 1, 2, 3, 4, 5].map(renderPane)}
           </div>
         );
@@ -846,7 +846,7 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className={`flex h-screen w-screen overflow-hidden select-none transition-colors ${
+      className={`flex h-screen w-screen overflow-hidden select-none transition-colors duration-300 ease-apple ${
         isDark ? 'bg-[#090a0d] text-[#f1f5f9]' : 'bg-slate-100 text-slate-900'
       }`}
     >
@@ -893,7 +893,7 @@ export const App: React.FC = () => {
         />
 
         {/* Dynamic Card Grid for Active Workspace (1 to 6 Panes) */}
-        <main className="flex-1 flex p-2 min-h-0 min-w-0 overflow-hidden">
+        <main className="flex-1 flex p-2 min-h-0 min-w-0 overflow-hidden transition-all duration-300 ease-apple">
           {renderGridLayout()}
         </main>
       </div>
@@ -948,7 +948,7 @@ export const App: React.FC = () => {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-lg bg-[#0f1015]/95 border border-amber-400/40 text-amber-200 text-xs shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-2 duration-150">
+        <div className="fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-lg bg-[#0f1015]/95 border border-amber-400/40 text-amber-200 text-xs shadow-2xl backdrop-blur-md animate-toast-in">
           {toast}
         </div>
       )}

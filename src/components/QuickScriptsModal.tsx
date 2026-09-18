@@ -271,13 +271,13 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/75 backdrop-blur-sm animate-in fade-in-0 duration-150"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/75 backdrop-blur-md animate-overlay-in"
       onClick={onClose}
       onKeyDown={handleKeyDown}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl bg-[#0c0d12] border border-white/[0.09] shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[82vh] animate-in zoom-in-95 duration-150 ring-1 ring-amber-400/20"
+        className="w-full max-w-2xl bg-[#0c0d12] border border-white/[0.09] shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[82vh] ring-1 ring-amber-400/30 animate-dialog-in will-change-transform"
       >
         {/* Header with Search */}
         <div className="p-3.5 border-b border-white/[0.06] flex items-center gap-3 bg-[#0f1016]">
@@ -298,7 +298,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
           )}
           <button
             onClick={onClose}
-            className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+            className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors press-scale"
           >
             <X className="w-4 h-4" />
           </button>
@@ -311,7 +311,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-150 ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-150 press-scale ${
                   selectedCategory === cat.id
                     ? 'bg-amber-400 text-black shadow-sm font-semibold'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]'

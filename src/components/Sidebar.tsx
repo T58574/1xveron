@@ -90,77 +90,101 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const isDark = theme === 'dark';
 
-  if (!isOpen) {
-    return (
-      <div
-        className={`w-12 flex flex-col items-center py-3 border-r transition-all duration-200 select-none ${
-          isDark ? 'bg-[#0d0e12] border-white/[0.06]' : 'bg-zinc-100 border-zinc-200'
-        }`}
-      >
-        <button
-          onClick={onToggle}
-          title="Expand Sidebar"
-          className="p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-colors"
-        >
-          <PanelLeft className="w-4 h-4" />
-        </button>
-
-        <div className="w-5 h-[1px] bg-white/[0.06] my-3" />
-
-        <button
-          onClick={onOpenCreateWorkspaceModal}
-          title="New Workspace Group"
-          className="p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-colors"
-        >
-          <Layers className="w-4 h-4" />
-        </button>
-
-        <button
-          onClick={() => onCreateSession(undefined, activeWorkspaceId)}
-          title="New Terminal in Active Workspace"
-          className="p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-colors mt-1"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-
-        <div className="mt-auto flex flex-col items-center">
-          <button
-            onClick={onOpenSettingsModal}
-            title="Settings"
-            className="p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      className={`w-64 flex flex-col h-full border-r select-none transition-all duration-200 shrink-0 ${
+    <aside
+      className={`flex flex-col h-full border-r select-none transition-[width] duration-300 ease-apple shrink-0 overflow-hidden ${
+        isOpen ? 'w-64' : 'w-14'
+      } ${
         isDark ? 'bg-[#0d0e12] border-white/[0.06] text-zinc-200' : 'bg-zinc-50 border-zinc-200 text-zinc-800'
       }`}
     >
       {/* Brand Header */}
-      <div className="h-11 px-3.5 flex items-center justify-between border-b border-white/[0.06]">
-        <div className="flex items-center gap-2.5">
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-black text-[11px] shadow-sm shadow-amber-500/20">
+      <div className="h-11 px-3 flex items-center justify-between border-b border-white/[0.06] shrink-0">
+        <div
+          className={`flex items-center gap-2.5 overflow-hidden transition-all duration-300 ease-apple ${
+            isOpen ? 'opacity-100 max-w-[160px]' : 'opacity-0 max-w-0 pointer-events-none'
+          }`}
+        >
+          <div className="w-5 h-5 rounded bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-black text-[11px] shadow-sm shadow-amber-500/20 shrink-0">
             V
           </div>
-          <span className="font-semibold text-xs tracking-wider uppercase text-zinc-100 font-mono">
+          <span className="font-semibold text-xs tracking-wider uppercase text-zinc-100 font-mono truncate">
             Veron
           </span>
         </div>
 
         <button
           onClick={onToggle}
-          title="Collapse Sidebar"
-          className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+          title={isOpen ? 'Collapse Sidebar' : 'Expand Sidebar'}
+          className={`p-1.5 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] transition-colors shrink-0 press-scale ${
+            !isOpen ? 'mx-auto' : ''
+          }`}
         >
-          <PanelLeftClose className="w-4 h-4" />
+          {isOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
         </button>
       </div>
+
+      {!isOpen ? (
+        <div className="flex-1 flex flex-col items-center py-3 gap-1 overflow-y-auto custom-scrollbar">
+          {workspaces.map((ws) => {
+            const isCurrent = ws.id === activeWorkspaceId;
+            const isWsAgy =
+              ws.kind === 'antigravity' ||
+              ws.name.toLowerCase().includes('antigravity') ||
+              ws.name.toLowerCase().includes('agy');
+
+            return (
+              <button
+                key={ws.id}
+                onClick={() => onSelectWorkspace(ws.id)}
+                title={ws.name}
+                className={`p-2 rounded-xl transition-all press-scale relative group ${
+                  isCurrent
+                    ? 'bg-amber-400/15 text-amber-400 ring-1 ring-amber-400/40'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]'
+                }`}
+              >
+                {isWsAgy ? (
+                  <AntigravityIcon size={16} mode={isCurrent ? 'gradient' : 'amber'} />
+                ) : ws.is_worktree ? (
+                  <GitBranch className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Layers className="w-4 h-4" />
+                )}
+              </button>
+            );
+          })}
+
+          <div className="w-5 h-[1px] bg-white/[0.06] my-2" />
+
+          <button
+            onClick={onOpenCreateWorkspaceModal}
+            title="New Workspace Group"
+            className="p-2 rounded-xl text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-all press-scale"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => onCreateSession(undefined, activeWorkspaceId)}
+            title="New Terminal in Active Workspace"
+            className="p-2 rounded-xl text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-all press-scale mt-1"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+
+          <div className="mt-auto flex flex-col items-center pt-2">
+            <button
+              onClick={onOpenSettingsModal}
+              title="Settings"
+              className="p-2 rounded-xl text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-all press-scale"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
 
       {/* Search Input */}
       <div className="p-2.5 border-b border-white/[0.04]">
@@ -469,16 +493,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom Panel */}
-      <div className="p-2.5 border-t border-white/[0.06]">
+      <div className="p-2.5 border-t border-white/[0.06] shrink-0">
         <button
           onClick={onOpenSettingsModal}
           title="Open Settings"
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-all duration-150 group"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-all duration-150 group press-scale"
         >
           <Settings className="w-4 h-4 text-zinc-400 group-hover:text-amber-400 transition-colors" />
           <span>Settings</span>
         </button>
       </div>
-    </div>
+        </>
+      )}
+    </aside>
   );
 };

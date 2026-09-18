@@ -85,13 +85,13 @@ export const RemoteModal: React.FC<RemoteModalProps> = ({ isOpen, onClose, syste
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-overlay-in select-none"
     >
-      <div className="relative w-full max-w-md bg-[#111217] border border-white/[0.08] rounded-2xl p-6 shadow-2xl text-zinc-200">
+      <div className="relative w-full max-w-md bg-[#111217] border border-white/[0.08] rounded-2xl p-6 shadow-2xl text-zinc-200 animate-dialog-in will-change-transform">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors press-scale"
         >
           <X className="w-4 h-4" />
         </button>

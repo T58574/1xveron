@@ -121,7 +121,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
           {isWorkspaceDropdownOpen && (
             <div
-              className="absolute left-0 mt-1.5 w-64 rounded-xl bg-[#13151c] border border-white/[0.08] shadow-2xl py-1.5 z-50 text-xs backdrop-blur-md"
+              className="absolute left-0 mt-1.5 w-64 rounded-xl bg-[#13151c] border border-white/[0.08] shadow-2xl py-1.5 z-50 text-xs backdrop-blur-md animate-dropdown-in origin-top-left"
               onClick={() => setIsWorkspaceDropdownOpen(false)}
             >
               <div className="px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
@@ -139,7 +139,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <button
                     key={ws.id}
                     onClick={() => onSelectWorkspace(ws.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/[0.06] transition-colors ${
+                    className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/[0.06] transition-colors press-scale ${
                       isCurrent ? 'text-amber-400 font-medium bg-white/[0.03]' : 'text-zinc-300'
                     }`}
                   >
@@ -177,7 +177,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   setIsWorkspaceDropdownOpen(false);
                   onOpenCreateWorkspaceModal();
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-amber-400 hover:bg-amber-400/10 transition-colors font-medium"
+                className="w-full flex items-center gap-2 px-3 py-2 text-amber-400 hover:bg-amber-400/10 transition-colors font-medium press-scale"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>New Workspace Group...</span>
@@ -195,7 +195,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 key={mode}
                 onClick={() => onChangeLayout(mode)}
                 title={`${label} in this workspace`}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-all duration-150 ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-all duration-200 ease-apple press-scale ${
                   isActive
                     ? 'bg-amber-400 text-black font-semibold shadow-sm'
                     : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
@@ -229,7 +229,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 ? 'Launch new AGY session in this workspace'
                 : 'Launch new shell in active workspace'
             }
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-150 border ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-200 ease-apple border press-scale ${
               isFull
                 ? 'opacity-40 cursor-not-allowed bg-white/[0.02] border-white/[0.04] text-zinc-500'
                 : 'bg-white/[0.04] hover:bg-white/[0.08] hover:text-amber-400 text-zinc-300 border-white/[0.06]'
@@ -246,14 +246,14 @@ export const TopBar: React.FC<TopBarProps> = ({
 
           {isShellDropdownOpen && !isFull && (
             <div
-              className="absolute right-0 mt-1.5 w-48 rounded-xl bg-[#13151c] border border-white/[0.08] shadow-2xl py-1 z-50 text-xs backdrop-blur-md"
+              className="absolute right-0 mt-1.5 w-48 rounded-xl bg-[#13151c]/95 border border-white/[0.08] shadow-2xl py-1 z-50 text-xs backdrop-blur-md animate-dropdown-in origin-top-right"
               onClick={() => setIsShellDropdownOpen(false)}
             >
               {systemInfo?.available_shells?.map((shell: ShellOption) => (
                 <button
                   key={shell.cmd}
                   onClick={() => onCreateSession(shell.cmd)}
-                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
                 >
                   <TermIcon className="w-3.5 h-3.5 text-amber-400" />
                   <span>{shell.name}</span>
@@ -261,7 +261,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               )) || (
                 <button
                   onClick={() => onCreateSession('powershell.exe')}
-                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left"
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
                 >
                   <TermIcon className="w-3.5 h-3.5 text-amber-400" />
                   <span>PowerShell</span>
@@ -275,7 +275,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onOpenQuickScripts}
           title="Quick Scripts & Commands (Ctrl+K)"
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.04] hover:bg-white/[0.08] hover:text-amber-400 text-zinc-300 rounded-md text-xs font-medium transition-all duration-150 border border-white/[0.06]"
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.04] hover:bg-white/[0.08] hover:text-amber-400 text-zinc-300 rounded-md text-xs font-medium transition-all duration-200 ease-apple border border-white/[0.06] press-scale"
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
           <span className="hidden sm:inline">Scripts</span>
@@ -288,7 +288,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onOpenRemoteModal}
           title="Open Mobile Remote Control"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-400/[0.08] text-amber-300 border border-amber-400/20 hover:bg-amber-400/[0.15] transition-all duration-150"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-400/[0.08] text-amber-300 border border-amber-400/20 hover:bg-amber-400/[0.15] transition-all duration-200 ease-apple press-scale"
         >
           <Smartphone className="w-3.5 h-3.5 text-amber-400" />
           <span className="hidden sm:inline">Phone Remote</span>
@@ -298,7 +298,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onToggleTheme}
           title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          className="p-1.5 rounded-md text-zinc-400 hover:text-amber-400 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
+          className="p-1.5 rounded-md text-zinc-400 hover:text-amber-400 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-all duration-200 ease-apple press-scale"
         >
           {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
         </button>

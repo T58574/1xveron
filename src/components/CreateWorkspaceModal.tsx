@@ -119,9 +119,9 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-overlay-in select-none"
     >
-      <div className="w-full max-w-lg bg-[#0d0e13] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="w-full max-w-lg bg-[#0d0e13] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-dialog-in will-change-transform">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.06] bg-[#12141a]">
           <div className="flex items-center gap-2.5 text-zinc-100 font-semibold text-sm">
@@ -132,7 +132,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-colors"
+            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-colors press-scale"
           >
             <X className="w-4 h-4" />
           </button>

@@ -61,7 +61,26 @@
   overflow-y: auto !important;
 }
 
-/* Interactive transitions */
+/* Interactive transitions & Apple-grade feel */
 .smooth-hover {
   transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.press-scale {
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms cubic-bezier(0.16, 1, 0.3, 1), border-color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.press-scale:active {
+  transform: scale(0.97);
+}
+
+/* Smooth modal backdrop & panel classes */
+.modal-backdrop {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* GPU-accelerated transition hint */
+.gpu-layer {
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }

@@ -794,7 +794,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
   if (!session) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center border border-dashed border-white/[0.08] rounded-xl m-1 p-6 text-zinc-500 bg-[#0d0e13]/60 transition-all duration-200">
+      <div className="flex-1 flex flex-col items-center justify-center border border-dashed border-white/[0.08] hover:border-amber-400/30 rounded-xl m-1 p-6 text-zinc-500 bg-[#0d0e13]/60 hover:bg-[#0d0e13]/80 transition-all duration-300 ease-apple">
         {isAntigravity ? (
           <AntigravityIcon size={28} mode="amber" className="mb-2 opacity-50" />
         ) : (
@@ -805,7 +805,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         </p>
         <button
           onClick={onSplit}
-          className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] hover:text-amber-400 text-xs text-zinc-300 rounded-lg transition-all duration-150 border border-white/[0.06]"
+          className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] hover:text-amber-400 text-xs text-zinc-300 rounded-lg transition-all duration-200 ease-apple border border-white/[0.06] press-scale"
         >
           {isAntigravity ? (
             <>
@@ -832,7 +832,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         onFocus();
         termRef.current?.focus();
       }}
-      className={`relative flex flex-col flex-1 min-w-0 min-h-0 rounded-xl overflow-hidden transition-all duration-200 ${
+      className={`relative flex flex-col flex-1 min-w-0 min-h-0 rounded-xl overflow-hidden transition-all duration-300 ease-apple ${
         isDark
           ? 'bg-[#0c0d12] border border-white/[0.07] shadow-card'
           : 'bg-white border border-zinc-200 shadow-sm'
@@ -903,7 +903,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           <button
             onClick={copyCwd}
             title={`Copy: ${session.cwd}`}
-            className="hidden md:flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-amber-400 truncate max-w-[140px] shrink-0 transition-all duration-150"
+            className="hidden md:flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-amber-400 truncate max-w-[140px] shrink-0 transition-all duration-200 ease-apple press-scale"
           >
             <Folder className="w-3 h-3 text-zinc-500 shrink-0" />
             <span className="truncate">{session.cwd.split('\\').pop() || session.cwd}</span>
@@ -924,7 +924,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
                 ? 'AGY Mode Active: AGY attaches images natively from clipboard. Terminal path injection muted. Click to toggle Direct Path mode.'
                 : 'Direct Path Mode Active: Pastes relative file path into terminal prompt on Ctrl+V. Click to toggle AGY mode.'
             }
-            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-all duration-150 cursor-pointer select-none ${
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-all duration-200 ease-apple cursor-pointer select-none press-scale ${
               agyMode
                 ? 'bg-amber-400/10 text-amber-300 border border-amber-400/30 hover:bg-amber-400/20'
                 : 'bg-white/[0.04] text-zinc-400 border border-white/[0.06] hover:text-zinc-200 hover:bg-white/[0.08]'
@@ -951,7 +951,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
                 ? 'Archive screenshot from clipboard (Ctrl+V) [AGY Mode: path muted]'
                 : 'Paste screenshot from clipboard (Ctrl+V) [Direct Path Mode: injects path]'
             }
-            className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-colors"
+            className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-all duration-200 ease-apple press-scale"
           >
             <Image className="w-3.5 h-3.5" />
           </button>
@@ -960,7 +960,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           <button
             onClick={handleOpenFileDialog}
             title="Input images (Select multiple from Explorer and insert relative paths)"
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-colors"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-all duration-200 ease-apple press-scale"
           >
             <ImagePlus className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden 2xl:inline text-[11px] font-medium">Input images</span>
@@ -972,7 +972,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               onSplit();
             }}
             title="Split pane"
-            className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+            className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all duration-200 ease-apple press-scale"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -983,7 +983,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               onMaximize();
             }}
             title={isMaximized ? 'Restore pane' : 'Maximize pane'}
-            className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+            className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all duration-200 ease-apple press-scale"
           >
             {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
@@ -994,7 +994,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               onClose();
             }}
             title="Close session"
-            className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-white/[0.06] transition-colors"
+            className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-white/[0.06] transition-all duration-200 ease-apple press-scale"
           >
             <X className="w-3.5 h-3.5" />
           </button>
