@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   CapturesInfo,
   SessionInfo,
@@ -246,8 +246,10 @@ export const App: React.FC = () => {
     }));
   };
 
-  const updateRatio = (key: string, value: number) => {
-    const clamped = Math.max(15, Math.min(85, value));
+  const saveRatiosTimeoutRef = useRef<any>(null);
+
+  const updateRatio = (key: string, value: number, min = 15, max = 85) => {
+    const clamped = Math.max(min, Math.min(max, value));
     setWorkspaceRatios((prev) => {
       const next = {
         ...prev,
@@ -256,9 +258,12 @@ export const App: React.FC = () => {
           [key]: clamped,
         },
       };
-      try {
-        localStorage.setItem('veron_layout_ratios', JSON.stringify(next));
-      } catch {}
+      clearTimeout(saveRatiosTimeoutRef.current);
+      saveRatiosTimeoutRef.current = setTimeout(() => {
+        try {
+          localStorage.setItem('veron_layout_ratios', JSON.stringify(next));
+        } catch {}
+      }, 300);
       return next;
     });
   };
@@ -1039,7 +1044,7 @@ export const App: React.FC = () => {
     switch (currentLayoutMode) {
       case 1:
         return (
-          <div className="flex-1 flex w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
+          <div className="flex-1 flex w-full h-full min-h-0 min-w-0">
             {renderPane(0)}
           </div>
         );
@@ -1047,16 +1052,16 @@ export const App: React.FC = () => {
       case 2: {
         const colRatio = ratios.mode2_col ?? 50;
         return (
-          <div className="flex-1 flex w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
-            <div style={{ width: `${colRatio}%` }} className="flex min-w-0 min-h-0">
+          <div className="flex-1 flex w-full h-full min-h-0 min-w-0 overflow-hidden">
+            <div style={{ width: `${colRatio}%` }} className="flex h-full min-w-0 min-h-0">
               {renderPane(0)}
             </div>
             <PaneSplitter
               direction="vertical"
-              onResize={(delta) => updateRatio('mode2_col', colRatio + delta)}
+              onResizePercent={(p) => updateRatio('mode2_col', p)}
               onReset={() => resetRatio('mode2_col')}
             />
-            <div style={{ width: `${100 - colRatio}%` }} className="flex min-w-0 min-h-0">
+            <div style={{ width: `${100 - colRatio}%` }} className="flex h-full min-w-0 min-h-0">
               {renderPane(1)}
             </div>
           </div>
@@ -1068,25 +1073,25 @@ export const App: React.FC = () => {
         const colRatio = ratios.mode3_col ?? 50;
         const rowRatio = ratios.mode3_row ?? 50;
         return (
-          <div className="flex-1 flex w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
-            <div style={{ width: `${colRatio}%` }} className="flex min-w-0 min-h-0">
+          <div className="flex-1 flex w-full h-full min-h-0 min-w-0 overflow-hidden">
+            <div style={{ width: `${colRatio}%` }} className="flex h-full min-w-0 min-h-0">
               {renderPane(0)}
             </div>
             <PaneSplitter
               direction="vertical"
-              onResize={(delta) => updateRatio('mode3_col', colRatio + delta)}
+              onResizePercent={(p) => updateRatio('mode3_col', p)}
               onReset={() => resetRatio('mode3_col')}
             />
-            <div style={{ width: `${100 - colRatio}%` }} className="flex flex-col min-w-0 min-h-0 overflow-hidden">
-              <div style={{ height: `${rowRatio}%` }} className="flex min-w-0 min-h-0">
+            <div style={{ width: `${100 - colRatio}%` }} className="flex flex-col h-full min-w-0 min-h-0 overflow-hidden">
+              <div style={{ height: `${rowRatio}%` }} className="flex w-full min-w-0 min-h-0">
                 {renderPane(1)}
               </div>
               <PaneSplitter
                 direction="horizontal"
-                onResize={(delta) => updateRatio('mode3_row', rowRatio + delta)}
+                onResizePercent={(p) => updateRatio('mode3_row', p)}
                 onReset={() => resetRatio('mode3_row')}
               />
-              <div style={{ height: `${100 - rowRatio}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ height: `${100 - rowRatio}%` }} className="flex w-full min-w-0 min-h-0">
                 {renderPane(2)}
               </div>
             </div>
@@ -1099,37 +1104,37 @@ export const App: React.FC = () => {
         const colRatio = ratios.mode4_col ?? 50;
         const rowRatio = ratios.mode4_row ?? 50;
         return (
-          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
+          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 overflow-hidden">
             {/* Top row: Panes 0 & 1 */}
-            <div style={{ height: `${rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
-              <div style={{ width: `${colRatio}%` }} className="flex min-w-0 min-h-0">
+            <div style={{ height: `${rowRatio}%` }} className="flex w-full min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${colRatio}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(0)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode4_col', colRatio + delta)}
+                onResizePercent={(p) => updateRatio('mode4_col', p)}
                 onReset={() => resetRatio('mode4_col')}
               />
-              <div style={{ width: `${100 - colRatio}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${100 - colRatio}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(1)}
               </div>
             </div>
             <PaneSplitter
               direction="horizontal"
-              onResize={(delta) => updateRatio('mode4_row', rowRatio + delta)}
+              onResizePercent={(p) => updateRatio('mode4_row', p)}
               onReset={() => resetRatio('mode4_row')}
             />
             {/* Bottom row: Panes 2 & 3 */}
-            <div style={{ height: `${100 - rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
-              <div style={{ width: `${colRatio}%` }} className="flex min-w-0 min-h-0">
+            <div style={{ height: `${100 - rowRatio}%` }} className="flex w-full min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${colRatio}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(2)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode4_col', colRatio + delta)}
+                onResizePercent={(p) => updateRatio('mode4_col', p)}
                 onReset={() => resetRatio('mode4_col')}
               />
-              <div style={{ width: `${100 - colRatio}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${100 - colRatio}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(3)}
               </div>
             </div>
@@ -1141,49 +1146,59 @@ export const App: React.FC = () => {
         // 2 on top, 3 on bottom
         const rowRatio = ratios.mode5_row ?? 50;
         const topCol = ratios.mode5_topCol ?? 50;
-        const bot1 = ratios.mode5_bot1 ?? 33.33;
-        const bot2 = ratios.mode5_bot2 ?? 33.33;
-        const bot3 = Math.max(10, 100 - bot1 - bot2);
+        const botDiv1 = ratios.mode5_bot_div1 ?? (ratios.mode5_bot1 ?? 33.33);
+        const botDiv2 = ratios.mode5_bot_div2 ?? (botDiv1 + (ratios.mode5_bot2 ?? 33.33));
+        const safeBotDiv1 = Math.max(10, Math.min(botDiv2 - 10, botDiv1));
+        const safeBotDiv2 = Math.max(safeBotDiv1 + 10, Math.min(90, botDiv2));
+
+        const botCol1 = safeBotDiv1;
+        const botCol2 = safeBotDiv2 - safeBotDiv1;
+        const botCol3 = Math.max(10, 100 - safeBotDiv2);
+
         return (
-          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
+          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 overflow-hidden">
             {/* Top row */}
-            <div style={{ height: `${rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
-              <div style={{ width: `${topCol}%` }} className="flex min-w-0 min-h-0">
+            <div style={{ height: `${rowRatio}%` }} className="flex w-full min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${topCol}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(0)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode5_topCol', topCol + delta)}
+                onResizePercent={(p) => updateRatio('mode5_topCol', p)}
                 onReset={() => resetRatio('mode5_topCol')}
               />
-              <div style={{ width: `${100 - topCol}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${100 - topCol}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(1)}
               </div>
             </div>
             <PaneSplitter
               direction="horizontal"
-              onResize={(delta) => updateRatio('mode5_row', rowRatio + delta)}
+              onResizePercent={(p) => updateRatio('mode5_row', p)}
               onReset={() => resetRatio('mode5_row')}
             />
             {/* Bottom row */}
-            <div style={{ height: `${100 - rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
-              <div style={{ width: `${bot1}%` }} className="flex min-w-0 min-h-0">
+            <div style={{ height: `${100 - rowRatio}%` }} className="flex w-full min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${botCol1}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(2)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode5_bot1', bot1 + delta)}
-                onReset={() => resetRatio('mode5_bot1', 33.33)}
+                minPercent={10}
+                maxPercent={safeBotDiv2 - 10}
+                onResizePercent={(p) => updateRatio('mode5_bot_div1', p, 10, safeBotDiv2 - 10)}
+                onReset={() => resetRatio('mode5_bot_div1', 33.33)}
               />
-              <div style={{ width: `${bot2}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${botCol2}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(3)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode5_bot2', bot2 + delta)}
-                onReset={() => resetRatio('mode5_bot2', 33.33)}
+                minPercent={safeBotDiv1 + 10}
+                maxPercent={90}
+                onResizePercent={(p) => updateRatio('mode5_bot_div2', p, safeBotDiv1 + 10, 90)}
+                onReset={() => resetRatio('mode5_bot_div2', 66.67)}
               />
-              <div style={{ width: `${bot3}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${botCol3}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(4)}
               </div>
             </div>
@@ -1194,57 +1209,71 @@ export const App: React.FC = () => {
       case 6: {
         // 2 rows of 3 columns (2x3 Grid)
         const rowRatio = ratios.mode6_row ?? 50;
-        const col1 = ratios.mode6_col1 ?? 33.33;
-        const col2 = ratios.mode6_col2 ?? 33.33;
-        const col3 = Math.max(10, 100 - col1 - col2);
+        const div1 = ratios.mode6_div1 ?? (ratios.mode6_col1 ?? 33.33);
+        const div2 = ratios.mode6_div2 ?? (div1 + (ratios.mode6_col2 ?? 33.33));
+        const safeDiv1 = Math.max(10, Math.min(div2 - 10, div1));
+        const safeDiv2 = Math.max(safeDiv1 + 10, Math.min(90, div2));
+
+        const col1 = safeDiv1;
+        const col2 = safeDiv2 - safeDiv1;
+        const col3 = Math.max(10, 100 - safeDiv2);
+
         return (
-          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
+          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 overflow-hidden">
             {/* Top row */}
-            <div style={{ height: `${rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
-              <div style={{ width: `${col1}%` }} className="flex min-w-0 min-h-0">
+            <div style={{ height: `${rowRatio}%` }} className="flex w-full min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${col1}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(0)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode6_col1', col1 + delta)}
-                onReset={() => resetRatio('mode6_col1', 33.33)}
+                minPercent={10}
+                maxPercent={safeDiv2 - 10}
+                onResizePercent={(p) => updateRatio('mode6_div1', p, 10, safeDiv2 - 10)}
+                onReset={() => resetRatio('mode6_div1', 33.33)}
               />
-              <div style={{ width: `${col2}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${col2}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(1)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode6_col2', col2 + delta)}
-                onReset={() => resetRatio('mode6_col2', 33.33)}
+                minPercent={safeDiv1 + 10}
+                maxPercent={90}
+                onResizePercent={(p) => updateRatio('mode6_div2', p, safeDiv1 + 10, 90)}
+                onReset={() => resetRatio('mode6_div2', 66.67)}
               />
-              <div style={{ width: `${col3}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${col3}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(2)}
               </div>
             </div>
             <PaneSplitter
               direction="horizontal"
-              onResize={(delta) => updateRatio('mode6_row', rowRatio + delta)}
+              onResizePercent={(p) => updateRatio('mode6_row', p)}
               onReset={() => resetRatio('mode6_row')}
             />
             {/* Bottom row */}
-            <div style={{ height: `${100 - rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
-              <div style={{ width: `${col1}%` }} className="flex min-w-0 min-h-0">
+            <div style={{ height: `${100 - rowRatio}%` }} className="flex w-full min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${col1}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(3)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode6_col1', col1 + delta)}
-                onReset={() => resetRatio('mode6_col1', 33.33)}
+                minPercent={10}
+                maxPercent={safeDiv2 - 10}
+                onResizePercent={(p) => updateRatio('mode6_div1', p, 10, safeDiv2 - 10)}
+                onReset={() => resetRatio('mode6_div1', 33.33)}
               />
-              <div style={{ width: `${col2}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${col2}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(4)}
               </div>
               <PaneSplitter
                 direction="vertical"
-                onResize={(delta) => updateRatio('mode6_col2', col2 + delta)}
-                onReset={() => resetRatio('mode6_col2', 33.33)}
+                minPercent={safeDiv1 + 10}
+                maxPercent={90}
+                onResizePercent={(p) => updateRatio('mode6_div2', p, safeDiv1 + 10, 90)}
+                onReset={() => resetRatio('mode6_div2', 66.67)}
               />
-              <div style={{ width: `${col3}%` }} className="flex min-w-0 min-h-0">
+              <div style={{ width: `${col3}%` }} className="flex h-full min-w-0 min-h-0">
                 {renderPane(5)}
               </div>
             </div>
