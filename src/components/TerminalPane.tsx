@@ -865,22 +865,27 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   return (
     <div
       ref={paneRef}
+      onMouseDown={() => {
+        onFocus();
+      }}
       onClick={() => {
         onFocus();
         termRef.current?.focus();
       }}
-      className={`relative flex flex-col flex-1 min-w-0 min-h-0 rounded-xl overflow-hidden transition-all duration-300 ease-apple ${
+      className={`relative flex flex-col flex-1 min-w-0 min-h-0 rounded-xl overflow-hidden transition-all duration-200 ease-apple ${
         isDark
-          ? 'bg-[#0c0d12] border border-white/[0.07] shadow-card'
-          : 'bg-white border border-zinc-200 shadow-sm'
+          ? 'bg-[#0c0d12] shadow-card'
+          : 'bg-white shadow-sm'
       } ${
         isDragOver
-          ? 'ring-2 ring-accent bg-accent/[0.03] shadow-accent scale-[0.995]'
+          ? 'ring-2 ring-amber-400 bg-amber-400/[0.04] shadow-[0_0_30px_rgba(245,158,11,0.4)] scale-[0.995] border-amber-400'
           : isBelling
-          ? 'ring-2 ring-accent/90 shadow-accent border-accent'
+          ? 'ring-2 ring-amber-400/90 shadow-[0_0_25px_rgba(245,158,11,0.5)] border-amber-400'
           : isActive
-            ? 'ring-1 ring-accent/70 border-accent/40 shadow-pane-active'
-            : 'hover:border-white/[0.15]'
+            ? 'border-amber-400 ring-1 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.25)]'
+            : isDark
+            ? 'border border-white/[0.08] hover:border-white/[0.2]'
+            : 'border border-zinc-200 hover:border-zinc-300'
       }`}
     >
       {/* Precision Pane Header */}
@@ -893,7 +898,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         }}
         className={`h-9 px-3 flex items-center justify-between select-none border-b transition-colors duration-150 cursor-grab active:cursor-grabbing ${
           isDark
-            ? 'bg-[#121319] border-white/[0.06] text-zinc-300'
+            ? isActive
+              ? 'bg-[#141620] border-amber-400/30 text-zinc-100'
+              : 'bg-[#121319] border-white/[0.06] text-zinc-400'
+            : isActive
+            ? 'bg-amber-50 border-amber-400/30 text-zinc-900'
             : 'bg-zinc-50 border-zinc-200 text-zinc-700'
         }`}
       >

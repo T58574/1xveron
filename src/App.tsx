@@ -994,7 +994,7 @@ export const App: React.FC = () => {
       <div
         key={`${activeWsId}-pane-${idx}-${s?.id || 'empty'}`}
         data-slot-index={idx}
-        className="flex-1 flex w-full h-full min-w-0 min-h-0 relative"
+        className="flex-1 flex w-full h-full min-w-0 min-h-0 p-1 relative"
       >
         <TerminalPane
           session={s}
