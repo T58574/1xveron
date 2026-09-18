@@ -64,7 +64,7 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'modified':
-        return <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">M</span>;
+        return <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-accent/20 text-accent border border-accent/30">M</span>;
       case 'added':
         return <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">A</span>;
       case 'deleted':
@@ -87,14 +87,14 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
         {/* Header */}
         <div className="h-12 px-5 border-b border-white/[0.08] bg-[#111319] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-1.5 rounded-lg bg-amber-400/10 border border-amber-400/30 text-amber-400">
+            <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/30 text-accent">
               <GitBranch className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sm text-zinc-100">Live Git Changes</span>
                 {gitStatus?.branch && (
-                  <span className="text-xs px-2 py-0.5 rounded font-mono bg-white/[0.06] text-amber-300 border border-white/[0.08]">
+                  <span className="text-xs px-2 py-0.5 rounded font-mono bg-white/[0.06] text-accent border border-white/[0.08]">
                      {gitStatus.branch}
                   </span>
                 )}
@@ -114,7 +114,7 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
                 fetchGitDiff(workspacePath, selectedFile || undefined).then((res) => setDiffText(res.diff || ''));
               }}
               title="Refresh diff"
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] transition-colors press-scale"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-accent hover:bg-white/[0.06] transition-colors press-scale"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
@@ -122,7 +122,7 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
               onClick={handleCopyDiff}
               disabled={!diffText}
               title="Copy unified diff"
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-amber-400 transition-colors border border-white/[0.06] press-scale"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-accent transition-colors border border-white/[0.06] press-scale"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copied ? 'Copied!' : 'Copy Diff'}</span>
@@ -145,7 +145,7 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
               {selectedFile && (
                 <button
                   onClick={() => setSelectedFile(null)}
-                  className="text-amber-400 hover:underline capitalize"
+                  className="text-accent hover:underline capitalize"
                 >
                   Show all
                 </button>
@@ -166,7 +166,7 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
                       onClick={() => setSelectedFile(isSelected ? null : file.path)}
                       className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left ${
                         isSelected
-                          ? 'bg-amber-400/15 border border-amber-400/30 text-amber-300 font-medium'
+                          ? 'bg-accent/15 border border-accent/30 text-accent font-medium'
                           : 'hover:bg-white/[0.04] text-zinc-300'
                       }`}
                     >
@@ -193,12 +193,12 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
           <div className="flex-1 flex flex-col bg-[#0a0b0f] overflow-hidden">
             {isLoadingDiff ? (
               <div className="flex-1 flex items-center justify-center text-xs text-zinc-500">
-                <RefreshCw className="w-4 h-4 animate-spin text-amber-400 mr-2" />
+                <RefreshCw className="w-4 h-4 animate-spin text-accent mr-2" />
                 <span>Loading git diff...</span>
               </div>
             ) : !diffText.trim() ? (
               <div className="flex-1 flex flex-col items-center justify-center text-zinc-500">
-                <FileText className="w-8 h-8 opacity-30 text-amber-400 mb-2" />
+                <FileText className="w-8 h-8 opacity-30 text-accent mb-2" />
                 <p className="text-xs">No uncommitted changes in this view</p>
               </div>
             ) : (
@@ -220,8 +220,8 @@ export const GitDiffModal: React.FC<GitDiffModalProps> = ({
                     lineClass = 'text-cyan-400 font-semibold';
                     bgClass = 'bg-cyan-500/[0.08]';
                   } else if (line.startsWith('diff --git')) {
-                    lineClass = 'text-amber-400 font-bold';
-                    bgClass = 'bg-amber-400/[0.08] mt-3 border-t border-white/[0.06] pt-1';
+                    lineClass = 'text-accent font-bold';
+                    bgClass = 'bg-accent/[0.08] mt-3 border-t border-white/[0.06] pt-1';
                   }
 
                   return (

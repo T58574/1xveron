@@ -86,8 +86,8 @@ export const PaneSplitter: React.FC<PaneSplitterProps> = ({
             : 'h-[2px] w-full'
         } ${
           isDragging
-            ? 'bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]'
-            : 'bg-white/[0.08] hover:bg-amber-400/70'
+            ? 'bg-accent shadow-[0_0_8px_var(--veron-accent-glow)]'
+            : 'bg-white/[0.08] hover:bg-accent/70'
         }`}
       />
 
@@ -99,8 +99,8 @@ export const PaneSplitter: React.FC<PaneSplitterProps> = ({
             : 'h-1 w-5'
         } ${
           isDragging
-            ? 'bg-amber-400 shadow-[0_0_10px_#f59e0b]'
-            : 'bg-white/30 hover:bg-amber-400'
+            ? 'bg-accent shadow-accent'
+            : 'bg-white/30 hover:bg-accent'
         }`}
       />
     </div>

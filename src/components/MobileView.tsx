@@ -13,6 +13,7 @@ import {
 import { SessionInfo, Workspace } from '../types';
 import { getWsUrl, copyToGlobalClipboard, readFromGlobalClipboard } from '../services/api';
 import { AntigravityIcon } from './AntigravityIcon';
+import { VeronTheme } from '../services/theme';
 
 interface MobileViewProps {
   workspaces: Workspace[];
@@ -24,6 +25,7 @@ interface MobileViewProps {
   onSelectSession: (id: string, wsId?: string) => void;
   onCreateSession: (shell?: string, wsId?: string) => void;
   theme: 'dark' | 'light';
+  activeTheme?: VeronTheme;
 }
 
 export const MobileView: React.FC<MobileViewProps> = ({
@@ -36,6 +38,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
   onSelectSession,
   onCreateSession,
   theme,
+  activeTheme,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -92,7 +95,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
       fontSize: 12,
       fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
       lineHeight: 1.2,
-      theme: isDark
+      theme: activeTheme ? activeTheme.xterm : (isDark
         ? {
             background: '#090a0d',
             foreground: '#f4f4f5',
@@ -104,7 +107,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
             foreground: '#09090b',
             cursor: '#d97706',
             selectionBackground: 'rgba(217, 119, 6, 0.2)',
-          },
+          }),
     });
 
     // Key handler: allow native Ctrl+C / Ctrl+V without sending ASCII \x16
@@ -308,6 +311,12 @@ export const MobileView: React.FC<MobileViewProps> = ({
     };
   }, [activeSession?.id, theme]);
 
+  useEffect(() => {
+    if (termRef.current && activeTheme) {
+      termRef.current.options.theme = activeTheme.xterm;
+    }
+  }, [activeTheme]);
+
   const sendKey = (seq: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'input', data: seq }));
@@ -336,7 +345,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
       {/* Top Mobile Bar */}
       <div className="h-11 px-3 flex items-center justify-between border-b border-white/[0.06] bg-[#0d0e12] shrink-0 z-30">
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-black text-[10px]">
+          <div className="w-5 h-5 rounded bg-accent flex items-center justify-center font-bold text-[var(--veron-accent-fg)] text-[10px]">
             V
           </div>
           <span className="font-semibold text-xs tracking-wider uppercase font-mono text-zinc-200">
@@ -353,12 +362,12 @@ export const MobileView: React.FC<MobileViewProps> = ({
         <div className="relative">
           <button
             onClick={() => setIsSessionPickerOpen(!isSessionPickerOpen)}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/[0.1] border border-amber-400/25 text-xs font-medium text-amber-300 max-w-[190px]"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/[0.1] border border-accent/25 text-xs font-medium text-accent max-w-[190px]"
           >
             {isCurrentSessionAgy ? (
               <AntigravityIcon size={13} mode="gradient" className="shrink-0" />
             ) : (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
             )}
             <span className="truncate">{activeSession?.name || 'Session'}</span>
             <ChevronDown className="w-3.5 h-3.5 opacity-70 shrink-0" />
@@ -399,7 +408,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
                           onClick={() => onSelectWorkspace(w.id)}
                           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs shrink-0 transition-all ${
                             isSelected
-                              ? 'bg-amber-400 text-black font-semibold shadow'
+                              ? 'bg-accent text-[var(--veron-accent-fg)] font-semibold shadow'
                               : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300'
                           }`}
                         >
@@ -452,7 +461,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
                           }}
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors ${
                             isSelected
-                              ? 'bg-amber-400/15 text-amber-300 font-medium border border-amber-400/30'
+                              ? 'bg-accent/15 text-accent font-medium border border-accent/30'
                               : 'hover:bg-white/[0.04] text-zinc-300 border border-transparent'
                           }`}
                         >
@@ -460,11 +469,11 @@ export const MobileView: React.FC<MobileViewProps> = ({
                             {isSessAgy ? (
                               <AntigravityIcon size={14} mode="gradient" className="shrink-0" />
                             ) : (
-                              <TermIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <TermIcon className="w-3.5 h-3.5 text-accent shrink-0" />
                             )}
                             <span className="truncate">{s.name}</span>
                             {isSessAgy && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30">
+                              <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-accent/20 text-accent border border-accent/30">
                                 AGY
                               </span>
                             )}
@@ -476,7 +485,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
                             <span
                               className={`w-1.5 h-1.5 rounded-full ${
                                 s.is_alive
-                                  ? 'bg-amber-400 shadow-[0_0_5px_rgba(245,158,11,0.8)]'
+                                  ? 'bg-accent shadow-[0_0_5px_var(--veron-accent)]'
                                   : 'bg-zinc-600'
                               }`}
                             />
@@ -495,7 +504,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
                     onCreateSession(undefined, activeWorkspaceId);
                     setIsSessionPickerOpen(false);
                   }}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 bg-amber-400 hover:bg-amber-300 text-black font-semibold rounded-lg shadow transition-all"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 bg-accent hover:bg-accent-hover text-[var(--veron-accent-fg)] font-semibold rounded-lg shadow transition-all"
                 >
                   <Plus className="w-4 h-4" />
                   <span>{isAgyWorkspace ? 'New AGY Session' : 'New Shell Instance'}</span>
@@ -515,13 +524,13 @@ export const MobileView: React.FC<MobileViewProps> = ({
       <div className="shrink-0 bg-[#0d0e12] border-t border-white/[0.06] px-2 py-1.5 flex items-center gap-1 overflow-x-auto no-scrollbar">
         <button
           onClick={() => sendKey('\x1b')}
-          className="px-2.5 py-1 bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 rounded text-[11px] font-mono shrink-0 active:bg-amber-400 active:text-black transition-colors"
+          className="px-2.5 py-1 bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 rounded text-[11px] font-mono shrink-0 active:bg-accent active:text-[var(--veron-accent-fg)] transition-colors"
         >
           ESC
         </button>
         <button
           onClick={() => sendKey('\t')}
-          className="px-2.5 py-1 bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 rounded text-[11px] font-mono shrink-0 active:bg-amber-400 active:text-black transition-colors"
+          className="px-2.5 py-1 bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 rounded text-[11px] font-mono shrink-0 active:bg-accent active:text-[var(--veron-accent-fg)] transition-colors"
         >
           TAB
         </button>
@@ -569,7 +578,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
         </button>
         <button
           onClick={() => sendKey('\r')}
-          className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-black font-semibold rounded text-[11px] font-mono shrink-0 flex items-center gap-1"
+          className="px-3 py-1 bg-accent hover:bg-accent-hover text-[var(--veron-accent-fg)] font-semibold rounded text-[11px] font-mono shrink-0 flex items-center gap-1"
         >
           <CornerDownLeft className="w-3 h-3" />
         </button>
@@ -585,12 +594,12 @@ export const MobileView: React.FC<MobileViewProps> = ({
           placeholder="Type command (e.g. agy, ls, git status)..."
           value={quickInput}
           onChange={(e) => setQuickInput(e.target.value)}
-          className="flex-1 bg-[#12141a] border border-white/[0.08] rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-zinc-600 outline-none focus:border-amber-400 transition-colors"
+          className="flex-1 bg-[#12141a] border border-white/[0.08] rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-zinc-600 outline-none focus:border-accent transition-colors"
         />
         <button
           type="submit"
           disabled={!quickInput.trim()}
-          className="p-2 bg-amber-400 disabled:opacity-30 hover:bg-amber-300 text-black font-semibold rounded-lg transition-all"
+          className="p-2 bg-accent disabled:opacity-30 hover:bg-accent-hover text-[var(--veron-accent-fg)] font-semibold rounded-lg transition-all"
         >
           <Send className="w-3.5 h-3.5" />
         </button>

@@ -125,7 +125,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.06] bg-[#12141a]">
           <div className="flex items-center gap-2.5 text-zinc-100 font-semibold text-sm">
-            <div className="p-1.5 rounded-lg bg-amber-400/10 border border-amber-400/25 text-amber-400">
+            <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/25 text-accent">
               <Sparkles className="w-4 h-4" />
             </div>
             <span>New Workspace Group</span>
@@ -157,7 +157,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                 onClick={() => handleSelectKind('antigravity')}
                 className={`relative flex flex-col p-3.5 rounded-xl border cursor-pointer transition-all duration-150 ${
                   selectedKind === 'antigravity'
-                    ? 'bg-amber-400/[0.08] border-amber-400/80 shadow-[0_0_12px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/40'
+                    ? 'bg-accent/[0.08] border-accent/80 shadow-[0_0_12px_var(--veron-glow)] ring-1 ring-accent/40'
                     : 'bg-[#12141c] border-white/[0.06] hover:border-white/[0.15] hover:bg-white/[0.02]'
                 }`}
               >
@@ -165,7 +165,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                   <div className="p-2 rounded-lg bg-black/40 border border-white/[0.08] flex items-center justify-center">
                     <AntigravityIcon size={20} mode="gradient" />
                   </div>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30">
                     AI Agent
                   </span>
                 </div>
@@ -174,7 +174,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                   <span>Antigravity</span>
                 </div>
                 <p className="text-[11px] text-zinc-400 leading-tight">
-                  Автоматически запускает <span className="font-mono text-amber-300">agy</span> в консоли. Все окна группы работают с AI агентом.
+                  Автоматически запускает <span className="font-mono text-accent">agy</span> в консоли. Все окна группы работают с AI агентом.
                 </p>
               </div>
 
@@ -183,7 +183,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                 onClick={() => handleSelectKind('terminal')}
                 className={`relative flex flex-col p-3.5 rounded-xl border cursor-pointer transition-all duration-150 ${
                   selectedKind === 'terminal'
-                    ? 'bg-amber-400/[0.08] border-amber-400/80 shadow-[0_0_12px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/40'
+                    ? 'bg-accent/[0.08] border-accent/80 shadow-[0_0_12px_var(--veron-glow)] ring-1 ring-accent/40'
                     : 'bg-[#12141c] border-white/[0.06] hover:border-white/[0.15] hover:bg-white/[0.02]'
                 }`}
               >
@@ -218,7 +218,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={selectedKind === 'antigravity' ? 'Antigravity' : 'My Project'}
-                className="w-full px-3 py-2 rounded-lg bg-[#141720] border border-white/[0.08] text-zinc-100 text-xs focus:outline-none focus:border-amber-400/70 transition-colors font-medium"
+                className="w-full px-3 py-2 rounded-lg bg-[#141720] border border-white/[0.08] text-zinc-100 text-xs focus:outline-none focus:border-accent/70 transition-colors font-medium"
                 autoFocus
               />
             </div>
@@ -233,7 +233,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                 placeholder={defaultPath || 'C:\\Users\\user\\Documents\\dev\\veron'}
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#141720] border border-white/[0.08] text-zinc-100 text-xs focus:outline-none focus:border-amber-400/70 transition-colors font-mono placeholder:text-zinc-600"
+                className="w-full px-3 py-2 rounded-lg bg-[#141720] border border-white/[0.08] text-zinc-100 text-xs focus:outline-none focus:border-accent/70 transition-colors font-mono placeholder:text-zinc-600"
               />
             </div>
 
@@ -244,7 +244,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                   <div
                     className={`p-1.5 rounded-lg border transition-colors ${
                       useWorktree
-                        ? 'bg-amber-400/20 border-amber-400/40 text-amber-300'
+                        ? 'bg-accent/20 border-accent/40 text-accent'
                         : 'bg-black/40 border-white/[0.08] text-zinc-400'
                     }`}
                   >
@@ -253,7 +253,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                   <div>
                     <div className="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
                       <span>Git Worktree Isolation</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-400/15 text-amber-300 font-mono font-bold">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-accent/15 text-accent font-mono font-bold">
                         NEW BRANCH
                       </span>
                     </div>
@@ -272,7 +272,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                       setBranchName(name.toLowerCase().replace(/[^a-z0-9_-]/g, '-'));
                     }
                   }}
-                  className="w-4 h-4 rounded border-white/20 bg-black/40 text-amber-400 focus:ring-amber-400/40 cursor-pointer accent-amber-400"
+                  className="w-4 h-4 rounded border-white/20 bg-black/40 text-accent focus:ring-accent/40 cursor-pointer accent-accent"
                 />
               </label>
 
@@ -286,7 +286,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                     value={branchName}
                     onChange={(e) => setBranchName(e.target.value)}
                     placeholder={name.toLowerCase().replace(/[^a-z0-9_-]/g, '-') || 'feat/agent-branch'}
-                    className="w-full px-3 py-1.5 rounded-lg bg-[#0d0e14] border border-amber-400/50 text-amber-300 text-xs focus:outline-none font-mono"
+                    className="w-full px-3 py-1.5 rounded-lg bg-[#0d0e14] border border-accent/50 text-accent text-xs focus:outline-none font-mono"
                   />
                   <p className="text-[10px] text-zinc-500">
                     Агенты в этой группе не смогут случайно перезаписать или сломать основную ветку репозитория.
@@ -296,12 +296,12 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
             </div>
 
             {selectedKind === 'antigravity' ? (
-              <div className="p-2.5 rounded-lg bg-[#12141c] border border-amber-400/20 text-xs flex items-center justify-between">
+              <div className="p-2.5 rounded-lg bg-[#12141c] border border-accent/20 text-xs flex items-center justify-between">
                 <div className="flex items-center gap-2 text-zinc-300">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span>Команда автозапуска:</span>
                 </div>
-                <span className="px-2 py-0.5 rounded bg-black/60 font-mono text-amber-400 font-semibold border border-amber-400/30">
+                <span className="px-2 py-0.5 rounded bg-black/60 font-mono text-accent font-semibold border border-accent/30">
                   agy
                 </span>
               </div>
@@ -314,7 +314,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                 <select
                   value={selectedShell}
                   onChange={(e) => setSelectedShell(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#141720] border border-white/[0.08] text-zinc-100 text-xs focus:outline-none focus:border-amber-400/70 transition-colors font-sans"
+                  className="w-full px-3 py-2 rounded-lg bg-[#141720] border border-white/[0.08] text-zinc-100 text-xs focus:outline-none focus:border-accent/70 transition-colors font-sans"
                 >
                   {availableShells?.map((shell) => (
                     <option key={shell.cmd} value={shell.cmd} className="bg-[#141720] text-zinc-100">
@@ -333,10 +333,10 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
             <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between text-xs">
                 <label className="font-medium text-zinc-300 flex items-center gap-1.5">
-                  <LayoutGrid className="w-3.5 h-3.5 text-amber-400" />
+                  <LayoutGrid className="w-3.5 h-3.5 text-accent" />
                   <span>Сколько окон открыть сразу</span>
                 </label>
-                <span className="text-amber-400 font-semibold font-mono text-[11px]">
+                <span className="text-accent font-semibold font-mono text-[11px]">
                   {getLayoutLabel(windowCount)}
                 </span>
               </div>
@@ -351,7 +351,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                       onClick={() => setWindowCount(count)}
                       className={`flex flex-col items-center justify-center py-2 rounded-lg text-xs transition-all duration-150 ${
                         isSelected
-                          ? 'bg-amber-400 text-black shadow-md font-bold'
+                          ? 'bg-accent text-[var(--veron-accent-fg)] shadow-md font-bold'
                           : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05]'
                       }`}
                     >
@@ -380,7 +380,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || !name.trim()}
-              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-black transition-all shadow-sm flex items-center gap-1.5"
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-accent hover:bg-accent-hover disabled:opacity-50 text-[var(--veron-accent-fg)] transition-all shadow-sm flex items-center gap-1.5"
             >
               {isSubmitting ? (
                 'Creating...'

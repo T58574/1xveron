@@ -22,11 +22,11 @@ export const GitDiffPill: React.FC<GitDiffPillProps> = ({ status, onClick }) => 
       }
       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-150 border select-none cursor-pointer ${
         hasChanges
-          ? 'bg-amber-400/[0.08] hover:bg-amber-400/[0.16] border-amber-400/30 hover:border-amber-400/60 shadow-[0_0_8px_rgba(245,158,11,0.1)]'
+          ? 'bg-accent/[0.08] hover:bg-accent/[0.16] border-accent/30 hover:border-accent/60 shadow-[0_0_8px_var(--veron-glow)]'
           : 'bg-white/[0.03] hover:bg-white/[0.07] border-white/[0.06] text-zinc-400 hover:text-zinc-200'
       }`}
     >
-      <GitBranch className={`w-3.5 h-3.5 shrink-0 ${hasChanges ? 'text-amber-400' : 'text-zinc-500'}`} />
+      <GitBranch className={`w-3.5 h-3.5 shrink-0 ${hasChanges ? 'text-accent' : 'text-zinc-500'}`} />
       <span className="font-mono text-[11px] max-w-[100px] truncate text-zinc-200">
         {status.branch || 'git'}
       </span>

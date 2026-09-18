@@ -10,10 +10,19 @@
     --veron-sidebar: #0d0e12;
     --veron-card: #12141a;
     --veron-card-header: #161820;
+    --veron-elevated: #181c24;
     --veron-border: rgba(255, 255, 255, 0.08);
+    --veron-border-subtle: rgba(255, 255, 255, 0.04);
+    --veron-border-accent: rgba(245, 158, 11, 0.4);
     --veron-text: #f4f4f5;
     --veron-text-muted: #71717a;
     --veron-accent: #f59e0b;
+    --veron-accent-rgb: 245 158 11;
+    --veron-accent-hover: #fbbf24;
+    --veron-accent-hover-rgb: 251 191 36;
+    --veron-accent-dim: rgba(245, 158, 11, 0.15);
+    --veron-accent-glow: rgba(245, 158, 11, 0.35);
+    --veron-accent-fg: #000000;
   }
 
   .light {
@@ -21,10 +30,19 @@
     --veron-sidebar: #f1f2f4;
     --veron-card: #ffffff;
     --veron-card-header: #f8f9fa;
+    --veron-elevated: #ffffff;
     --veron-border: rgba(0, 0, 0, 0.09);
+    --veron-border-subtle: rgba(0, 0, 0, 0.05);
+    --veron-border-accent: rgba(217, 119, 6, 0.4);
     --veron-text: #09090b;
     --veron-text-muted: #64748b;
     --veron-accent: #d97706;
+    --veron-accent-rgb: 217 119 6;
+    --veron-accent-hover: #b45309;
+    --veron-accent-hover-rgb: 180 83 9;
+    --veron-accent-dim: rgba(217, 119, 6, 0.15);
+    --veron-accent-glow: rgba(217, 119, 6, 0.25);
+    --veron-accent-fg: #ffffff;
   }
 
   body {
@@ -49,7 +67,24 @@
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(245, 158, 11, 0.4);
+  background: var(--veron-accent-dim);
+}
+
+/* Dynamic Accent Theme Utilities */
+.text-accent {
+  color: var(--veron-accent);
+}
+.bg-accent {
+  background-color: var(--veron-accent);
+}
+.border-accent {
+  border-color: var(--veron-border-accent);
+}
+.ring-accent {
+  --tw-ring-color: var(--veron-accent);
+}
+.shadow-accent {
+  box-shadow: 0 0 16px -2px var(--veron-accent-glow);
 }
 
 /* Xterm overrides */

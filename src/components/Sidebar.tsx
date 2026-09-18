@@ -105,7 +105,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             isOpen ? 'opacity-100 max-w-[160px]' : 'opacity-0 max-w-0 pointer-events-none'
           }`}
         >
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-black text-[11px] shadow-sm shadow-amber-500/20 shrink-0">
+          <div className="w-5 h-5 rounded bg-accent flex items-center justify-center font-bold text-[var(--veron-accent-fg,#000)] text-[11px] shadow-sm shadow-accent shrink-0">
             V
           </div>
           <span className="font-semibold text-xs tracking-wider uppercase text-zinc-100 font-mono truncate">
@@ -116,7 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={onToggle}
           title={isOpen ? 'Collapse Sidebar' : 'Expand Sidebar'}
-          className={`p-1.5 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] transition-colors shrink-0 press-scale ${
+          className={`p-1.5 rounded-lg text-zinc-400 hover:text-accent hover:bg-white/[0.06] transition-colors shrink-0 press-scale ${
             !isOpen ? 'mx-auto' : ''
           }`}
         >
@@ -140,14 +140,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 title={ws.name}
                 className={`p-2 rounded-xl transition-all press-scale relative group ${
                   isCurrent
-                    ? 'bg-amber-400/15 text-amber-400 ring-1 ring-amber-400/40'
+                    ? 'bg-accent/15 text-accent ring-1 ring-accent/40'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]'
                 }`}
               >
                 {isWsAgy ? (
-                  <AntigravityIcon size={16} mode={isCurrent ? 'gradient' : 'amber'} />
+                  <AntigravityIcon size={16} mode={isCurrent ? 'gradient' : 'accent'} />
                 ) : ws.is_worktree ? (
-                  <GitBranch className="w-4 h-4 text-amber-400" />
+                  <GitBranch className="w-4 h-4 text-accent" />
                 ) : (
                   <Layers className="w-4 h-4" />
                 )}
@@ -160,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={onOpenCreateWorkspaceModal}
             title="New Workspace Group"
-            className="p-2 rounded-xl text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-all press-scale"
+            className="p-2 rounded-xl text-zinc-400 hover:text-accent hover:bg-white/[0.05] transition-all press-scale"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -168,7 +168,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={() => onCreateSession(undefined, activeWorkspaceId)}
             title="New Terminal in Active Workspace"
-            className="p-2 rounded-xl text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-all press-scale mt-1"
+            className="p-2 rounded-xl text-zinc-400 hover:text-accent hover:bg-white/[0.05] transition-all press-scale mt-1"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -177,7 +177,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={onOpenSettingsModal}
               title="Settings"
-              className="p-2 rounded-xl text-zinc-400 hover:text-amber-400 hover:bg-white/[0.05] transition-all press-scale"
+              className="p-2 rounded-xl text-zinc-400 hover:text-accent hover:bg-white/[0.05] transition-all press-scale"
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -191,8 +191,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div
           className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs transition-colors ${
             isDark
-              ? 'bg-[#12141a] border-white/[0.06] text-zinc-200 focus-within:border-amber-400/60'
-              : 'bg-white border-zinc-200 text-zinc-700 focus-within:border-amber-500'
+              ? 'bg-[#12141a] border-white/[0.06] text-zinc-200 focus-within:border-accent/60'
+              : 'bg-white border-zinc-200 text-zinc-700 focus-within:border-accent'
           }`}
         >
           <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
@@ -215,13 +215,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 overflow-y-auto px-2 py-3 space-y-3">
         <div className="flex items-center justify-between px-2 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
           <span className="flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-amber-400" />
+            <Layers className="w-3.5 h-3.5 text-accent" />
             Workspace Groups
           </span>
           <button
             onClick={onOpenCreateWorkspaceModal}
             title="Create New Workspace Group"
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-amber-400 transition-colors text-[10px] lowercase font-normal"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-accent transition-colors text-[10px] lowercase font-normal"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>new</span>
@@ -248,9 +248,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 isActiveWs
                   ? isDark
                     ? isAntigravity
-                      ? 'bg-[#12141c]/90 border-amber-400/50 shadow-sm shadow-amber-500/10'
-                      : 'bg-[#12141c]/90 border-amber-400/40 shadow-sm shadow-amber-500/5'
-                    : 'bg-amber-50/70 border-amber-400/50 shadow-sm'
+                      ? 'bg-[#12141c]/90 border-accent/50 shadow-sm shadow-accent'
+                      : 'bg-[#12141c]/90 border-accent/40 shadow-sm shadow-accent'
+                    : 'bg-accent/10 border-accent/50 shadow-sm'
                   : isDark
                   ? 'bg-transparent border-transparent hover:bg-white/[0.02]'
                   : 'bg-transparent border-transparent hover:bg-zinc-100/60'
@@ -291,12 +291,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             if (e.key === 'Escape') setEditingWorkspaceId(null);
                           }}
                           onBlur={() => saveWorkspaceName(ws.id)}
-                          className="w-24 px-1 py-0.5 text-xs bg-[#090a0d] border border-amber-400 rounded text-zinc-100 outline-none"
+                          className="w-24 px-1 py-0.5 text-xs bg-[#090a0d] border border-accent rounded text-zinc-100 outline-none"
                           autoFocus
                         />
                         <button
                           onClick={() => saveWorkspaceName(ws.id)}
-                          className="text-amber-400 hover:text-amber-300"
+                          className="text-accent hover:text-accent/80"
                         >
                           <Check className="w-3 h-3" />
                         </button>
@@ -306,11 +306,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         {isAntigravity ? (
                           <AntigravityIcon
                             size={14}
-                            mode={isActiveWs ? 'gradient' : 'amber'}
+                            mode={isActiveWs ? 'gradient' : 'accent'}
                             className="shrink-0"
                           />
                         ) : ws.is_worktree ? (
-                          <GitBranch className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <GitBranch className="w-3.5 h-3.5 text-accent shrink-0" />
                         ) : (
                           <Layers className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                         )}
@@ -319,7 +319,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           title="Click to switch workspace, double-click to rename"
                           className={`truncate text-xs font-semibold tracking-tight min-w-0 flex-1 ${
                             isActiveWs
-                              ? 'text-amber-400'
+                              ? 'text-accent'
                               : 'text-zinc-300 group-hover:text-zinc-100'
                           }`}
                         >
@@ -331,12 +331,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           </span>
                         )}
                         {isAntigravity && !ws.name.toLowerCase().includes('antigravity') && !ws.name.toLowerCase().includes('agy') && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30 shrink-0">
+                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-accent/20 text-accent border border-accent/30 shrink-0">
                             AGY
                           </span>
                         )}
                         {isActiveWs && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0 shadow-[0_0_6px_var(--veron-accent-glow)]" />
                         )}
                       </div>
                     )}
@@ -354,7 +354,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     title={`${wsSessions.length} of max 6 sessions`}
                     className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
                       isActiveWs
-                        ? 'bg-amber-400/20 text-amber-300 font-semibold'
+                        ? 'bg-accent/20 text-accent font-semibold'
                         : 'bg-white/[0.06] text-zinc-400'
                     }`}
                   >
@@ -373,7 +373,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className={`p-1 rounded transition-colors ${
                       isFull
                         ? 'opacity-30 cursor-not-allowed text-zinc-600'
-                        : 'text-zinc-400 hover:text-amber-400 hover:bg-white/[0.08]'
+                        : 'text-zinc-400 hover:text-accent hover:bg-white/[0.08]'
                     }`}
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -421,7 +421,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           onSelectWorkspace(ws.id);
                           onCreateSession(undefined, ws.id);
                         }}
-                        className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded bg-white/[0.04] hover:bg-amber-400/10 hover:text-amber-400 text-zinc-400 transition-colors"
+                        className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded bg-white/[0.04] hover:bg-accent/10 hover:text-accent text-zinc-400 transition-colors"
                       >
                         {isAntigravity ? <AntigravityIcon size={12} mode="gradient" /> : <Plus className="w-3 h-3" />}
                         <span>{isAntigravity ? 'Launch AGY Session' : 'Launch Terminal'}</span>
@@ -437,8 +437,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           className={`group relative flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition-all duration-150 ${
                             isSelected
                               ? isDark
-                                ? 'bg-amber-400/10 text-white border-l-2 border-amber-400 font-medium'
-                                : 'bg-amber-100 text-amber-950 border-l-2 border-amber-500 font-medium'
+                                ? 'bg-accent/10 text-white border-l-2 border-accent font-medium'
+                                : 'bg-accent/15 text-zinc-950 border-l-2 border-accent font-medium'
                               : isDark
                               ? 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
                               : 'text-zinc-600 hover:bg-zinc-100'
@@ -455,7 +455,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               <span
                                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                   session.is_alive
-                                    ? 'bg-amber-400 shadow-[0_0_4px_rgba(245,158,11,0.6)]'
+                                    ? 'bg-accent shadow-[0_0_4px_var(--veron-accent-glow)]'
                                     : 'bg-zinc-600'
                                 }`}
                               />
@@ -499,7 +499,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           title="Open Settings"
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-all duration-150 group press-scale"
         >
-          <Settings className="w-4 h-4 text-zinc-400 group-hover:text-amber-400 transition-colors" />
+          <Settings className="w-4 h-4 text-zinc-400 group-hover:text-accent transition-colors" />
           <span>Settings</span>
         </button>
       </div>

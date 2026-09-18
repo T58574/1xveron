@@ -3,7 +3,7 @@ import React from 'react';
 interface AntigravityIconProps {
   className?: string;
   size?: number;
-  mode?: 'gradient' | 'amber' | 'monochrome';
+  mode?: 'gradient' | 'amber' | 'accent' | 'monochrome';
 }
 
 export const AntigravityIcon: React.FC<AntigravityIconProps> = ({
@@ -32,11 +32,11 @@ export const AntigravityIcon: React.FC<AntigravityIconProps> = ({
             <stop offset="100%" stopColor="#ef4444" />
           </linearGradient>
         )}
-        {mode === 'amber' && (
+        {(mode === 'amber' || (mode as any) === 'accent') && (
           <linearGradient id={gradientId} x1="2" y1="21" x2="22" y2="3" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#b45309" />
-            <stop offset="50%" stopColor="#f59e0b" />
-            <stop offset="100%" stopColor="#fbbf24" />
+            <stop offset="0%" stopColor="var(--veron-border-accent, #b45309)" />
+            <stop offset="50%" stopColor="var(--veron-accent, #f59e0b)" />
+            <stop offset="100%" stopColor="var(--veron-accent-hover, #fbbf24)" />
           </linearGradient>
         )}
       </defs>

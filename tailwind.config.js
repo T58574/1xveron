@@ -8,22 +8,29 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Cybran / Cicada Precision Palette (Matte Obsidian + Amber/Gold)
+        accent: {
+          DEFAULT: 'rgb(var(--veron-accent-rgb) / <alpha-value>)',
+          hover: 'var(--veron-accent-hover)',
+          dim: 'var(--veron-accent-dim)',
+          glow: 'var(--veron-accent-glow)',
+          fg: 'var(--veron-accent-fg)',
+        },
         veron: {
-          bg: '#090a0d',
-          sidebar: '#0d0e12',
-          card: '#12141a',
-          cardHeader: '#161820',
-          border: 'rgba(255, 255, 255, 0.08)',
-          borderSubtle: 'rgba(255, 255, 255, 0.04)',
-          borderHover: 'rgba(245, 158, 11, 0.35)',
+          bg: 'var(--veron-bg)',
+          sidebar: 'var(--veron-sidebar)',
+          card: 'var(--veron-card)',
+          cardHeader: 'var(--veron-card-header)',
+          elevated: 'var(--veron-elevated)',
+          border: 'var(--veron-border)',
+          borderSubtle: 'var(--veron-border-subtle)',
+          borderHover: 'var(--veron-border-accent)',
           hover: 'rgba(255, 255, 255, 0.04)',
-          active: 'rgba(245, 158, 11, 0.08)',
-          accent: '#f59e0b',       // Cicada Amber
-          accentHover: '#fbbf24',  // Electric Gold
-          accentMuted: 'rgba(245, 158, 11, 0.15)',
-          text: '#f4f4f5',
-          muted: '#71717a',
+          active: 'var(--veron-accent-dim)',
+          accent: 'rgb(var(--veron-accent-rgb) / <alpha-value>)',
+          accentHover: 'var(--veron-accent-hover)',
+          accentMuted: 'var(--veron-accent-dim)',
+          text: 'var(--veron-text)',
+          muted: 'var(--veron-text-muted)',
         }
       },
       fontFamily: {
@@ -32,8 +39,9 @@ export default {
       },
       boxShadow: {
         'card': '0 4px 20px -2px rgba(0, 0, 0, 0.6)',
-        'pane-active': '0 0 0 1px rgba(245, 158, 11, 0.6), 0 8px 30px rgba(0, 0, 0, 0.6)',
-        'amber-glow': '0 0 16px -2px rgba(245, 158, 11, 0.25)',
+        'pane-active': '0 0 0 1px var(--veron-border-accent), 0 8px 30px rgba(0, 0, 0, 0.6)',
+        'accent-glow': '0 0 16px -2px var(--veron-accent-glow)',
+        'amber-glow': '0 0 16px -2px var(--veron-accent-glow)',
       },
       transitionTimingFunction: {
         'apple': 'cubic-bezier(0.16, 1, 0.3, 1)',
@@ -56,9 +64,13 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(14px) scale(0.96)' },
           '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
+        'accent-pulse': {
+          '0%, 100%': { borderColor: 'var(--veron-border-accent)', boxShadow: '0 0 12px var(--veron-accent-dim)' },
+          '50%': { borderColor: 'var(--veron-accent)', boxShadow: '0 0 22px var(--veron-accent-glow)' },
+        },
         'amber-pulse': {
-          '0%, 100%': { borderColor: 'rgba(245, 158, 11, 0.25)', boxShadow: '0 0 12px rgba(245, 158, 11, 0.08)' },
-          '50%': { borderColor: 'rgba(245, 158, 11, 0.55)', boxShadow: '0 0 22px rgba(245, 158, 11, 0.22)' },
+          '0%, 100%': { borderColor: 'var(--veron-border-accent)', boxShadow: '0 0 12px var(--veron-accent-dim)' },
+          '50%': { borderColor: 'var(--veron-accent)', boxShadow: '0 0 22px var(--veron-accent-glow)' },
         },
       },
       animation: {
@@ -66,7 +78,8 @@ export default {
         'overlay-in': 'overlay-in 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'dropdown-in': 'dropdown-in 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'toast-in': 'toast-slide 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
-        'amber-pulse': 'amber-pulse 2.4s ease-in-out infinite',
+        'accent-pulse': 'accent-pulse 2.4s ease-in-out infinite',
+        'amber-pulse': 'accent-pulse 2.4s ease-in-out infinite',
       },
     },
   },

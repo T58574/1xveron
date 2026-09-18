@@ -12,6 +12,7 @@ import {
   readFromGlobalClipboard,
 } from '../services/api';
 import { AntigravityIcon } from './AntigravityIcon';
+import { VeronTheme } from '../services/theme';
 
 interface TerminalPaneProps {
   session: SessionInfo | undefined;
@@ -23,6 +24,7 @@ interface TerminalPaneProps {
   onSplit: () => void;
   onRename?: (newName: string) => void;
   theme: 'dark' | 'light';
+  activeTheme?: VeronTheme;
   onToast: (msg: string) => void;
   onCaptureSaved?: () => void;
   agyMode?: boolean;
@@ -43,6 +45,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   onSplit,
   onRename,
   theme,
+  activeTheme,
   onToast,
   onCaptureSaved,
   agyMode = true,
@@ -99,7 +102,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       windowsPty: {
         backend: 'conpty',
       },
-      theme: isDark
+      theme: activeTheme
+        ? activeTheme.xterm
+        : isDark
         ? {
             background: '#0c0d12',
             foreground: '#f4f4f5',
@@ -409,7 +414,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       }
       term.dispose();
     };
-  }, [session?.id, theme, isAntigravity]);
+  }, [session?.id, isAntigravity]);
+
+  // Dynamically update terminal theme on the fly without reconnecting or buffer reset
+  useEffect(() => {
+    if (termRef.current && activeTheme?.xterm) {
+      termRef.current.options.theme = activeTheme.xterm;
+    }
+  }, [activeTheme]);
 
   const processAndUploadImage = async (imageFile: File | Blob) => {
     if (!session || isUploadingRef.current) return;
@@ -816,21 +828,21 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       <div
         className={`flex-1 flex flex-col items-center justify-center border border-dashed rounded-xl m-1 p-6 transition-all duration-300 ease-apple ${
           isDragOver
-            ? 'border-amber-400 bg-amber-400/10 ring-2 ring-amber-400/80 scale-[0.99]'
-            : 'border-white/[0.08] hover:border-amber-400/30 text-zinc-500 bg-[#0d0e13]/60 hover:bg-[#0d0e13]/80'
+            ? 'border-accent bg-accent/10 ring-2 ring-accent/80 scale-[0.99]'
+            : 'border-white/[0.08] hover:border-accent/30 text-zinc-500 bg-[#0d0e13]/60 hover:bg-[#0d0e13]/80'
         }`}
       >
         {isAntigravity ? (
-          <AntigravityIcon size={28} mode="amber" className="mb-2 opacity-50" />
+          <AntigravityIcon size={28} mode="accent" className="mb-2 opacity-50" />
         ) : (
-          <TermIcon className="w-8 h-8 mb-2 opacity-30 text-amber-400" />
+          <TermIcon className="w-8 h-8 mb-2 opacity-30 text-accent" />
         )}
         <p className="text-xs font-medium text-zinc-400">
           {isAntigravity ? 'Empty AGY Slot' : 'Empty Slot'}
         </p>
         <button
           onClick={onSplit}
-          className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] hover:text-amber-400 text-xs text-zinc-300 rounded-lg transition-all duration-200 ease-apple border border-white/[0.06] press-scale"
+          className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] hover:text-accent text-xs text-zinc-300 rounded-lg transition-all duration-200 ease-apple border border-white/[0.06] press-scale"
         >
           {isAntigravity ? (
             <>
@@ -863,11 +875,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           : 'bg-white border border-zinc-200 shadow-sm'
       } ${
         isDragOver
-          ? 'ring-2 ring-amber-400 bg-amber-400/[0.03] shadow-[0_0_30px_rgba(245,158,11,0.35)] scale-[0.995]'
+          ? 'ring-2 ring-accent bg-accent/[0.03] shadow-accent scale-[0.995]'
           : isBelling
-          ? 'ring-2 ring-amber-400/90 shadow-[0_0_25px_rgba(245,158,11,0.5)] border-amber-400'
+          ? 'ring-2 ring-accent/90 shadow-accent border-accent'
           : isActive
-            ? 'ring-1 ring-amber-400/70 border-amber-400/40 shadow-pane-active'
+            ? 'ring-1 ring-accent/70 border-accent/40 shadow-pane-active'
             : 'hover:border-white/[0.15]'
       }`}
     >
@@ -886,10 +898,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         }`}
       >
         <div className="flex items-center gap-2 min-w-0">
-          {/* Restrained Amber Pip */}
+          {/* Restrained Accent Pip */}
           <span
             className={`w-1.5 h-1.5 rounded-full transition-colors shrink-0 ${
-              session.is_alive ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]' : 'bg-zinc-600'
+              session.is_alive ? 'bg-accent shadow-[0_0_6px_var(--veron-accent-glow)]' : 'bg-zinc-600'
             }`}
           />
           {isEditingName ? (
@@ -914,7 +926,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
                   setNewName(session.name);
                 }
               }}
-              className="text-xs font-medium bg-[#090a0d] border border-amber-400/60 rounded px-1.5 py-0.5 text-zinc-100 outline-none w-28 shrink-0"
+              className="text-xs font-medium bg-[#090a0d] border border-accent/60 rounded px-1.5 py-0.5 text-zinc-100 outline-none w-28 shrink-0"
               autoFocus
               onClick={(e) => e.stopPropagation()}
             />
@@ -922,25 +934,25 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             <span
               onDoubleClick={() => setIsEditingName(true)}
               title="Double click to rename session (Drag header to reorder)"
-              className="text-xs font-medium truncate min-w-0 flex-shrink text-zinc-100 tracking-tight cursor-pointer hover:text-amber-400 transition-colors"
+              className="text-xs font-medium truncate min-w-0 flex-shrink text-zinc-100 tracking-tight cursor-pointer hover:text-accent transition-colors"
             >
               {session.name}
             </span>
           )}
           {isAntigravity && isAwaitingInput && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-400/15 text-amber-300 border border-amber-400/30 animate-pulse shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.8)]"></span>
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 animate-pulse shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--veron-accent-glow)]"></span>
               Needs Input
             </span>
           )}
           <button
             onClick={copyCwd}
             title={`Copy: ${session.cwd}`}
-            className="hidden md:flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-amber-400 truncate max-w-[140px] shrink-0 transition-all duration-200 ease-apple press-scale"
+            className="hidden md:flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-accent truncate max-w-[140px] shrink-0 transition-all duration-200 ease-apple press-scale"
           >
             <Folder className="w-3 h-3 text-zinc-500 shrink-0" />
             <span className="truncate">{session.cwd.split('\\').pop() || session.cwd}</span>
-            {isCopiedPath ? <Check className="w-2.5 h-2.5 text-amber-400 shrink-0" /> : null}
+            {isCopiedPath ? <Check className="w-2.5 h-2.5 text-accent shrink-0" /> : null}
           </button>
         </div>
 
@@ -959,13 +971,13 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             }
             className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-all duration-200 ease-apple cursor-pointer select-none press-scale ${
               agyMode
-                ? 'bg-amber-400/10 text-amber-300 border border-amber-400/30 hover:bg-amber-400/20'
+                ? 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20'
                 : 'bg-white/[0.04] text-zinc-400 border border-white/[0.06] hover:text-zinc-200 hover:bg-white/[0.08]'
             }`}
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                agyMode ? 'bg-amber-400 shadow-[0_0_5px_rgba(245,158,11,0.8)]' : 'bg-zinc-500'
+                agyMode ? 'bg-accent shadow-[0_0_5px_var(--veron-accent-glow)]' : 'bg-zinc-500'
               }`}
             />
             <span>{agyMode ? 'AGY' : 'Path'}</span>
@@ -984,7 +996,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
                 ? 'Archive screenshot from clipboard (Ctrl+V) [AGY Mode: path muted]'
                 : 'Paste screenshot from clipboard (Ctrl+V) [Direct Path Mode: injects path]'
             }
-            className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-all duration-200 ease-apple press-scale"
+            className="p-1 rounded text-zinc-400 hover:text-accent hover:bg-white/[0.06] cursor-pointer transition-all duration-200 ease-apple press-scale"
           >
             <Image className="w-3.5 h-3.5" />
           </button>
@@ -993,9 +1005,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           <button
             onClick={handleOpenFileDialog}
             title="Input images (Select multiple from Explorer and insert relative paths)"
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-white/[0.06] cursor-pointer transition-all duration-200 ease-apple press-scale"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-zinc-400 hover:text-accent hover:bg-white/[0.06] cursor-pointer transition-all duration-200 ease-apple press-scale"
           >
-            <ImagePlus className="w-3.5 h-3.5 text-amber-400" />
+            <ImagePlus className="w-3.5 h-3.5 text-accent" />
             <span className="hidden 2xl:inline text-[11px] font-medium">Input images</span>
           </button>
 
@@ -1037,6 +1049,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       {/* Hidden file input for Explorer multi-image selection */}
       <input
         type="file"
+        file-input="true"
         ref={fileInputRef}
         multiple
         accept="image/*"
@@ -1048,16 +1061,22 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       <div className="flex-1 relative w-full h-full overflow-hidden p-1">
         <div ref={containerRef} className="w-full h-full" />
 
-        {/* 0.4s Cybran Amber Pulsing Energy Sphere Loader on Launch */}
+        {/* Pulsing Energy Sphere Loader on Launch */}
         {isLoading && (
           <div className="absolute inset-0 bg-[#0c0d12]/95 backdrop-blur-sm flex flex-col items-center justify-center z-30 transition-opacity duration-300 pointer-events-none">
             <div className="relative flex items-center justify-center">
-              <div className="absolute w-14 h-14 rounded-full bg-amber-400/20 animate-ping" />
-              <div className="absolute w-10 h-10 rounded-full border border-amber-400/40 animate-pulse" />
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-amber-500 to-amber-300 shadow-[0_0_20px_#f59e0b,0_0_8px_#fbbf24] animate-pulse" />
+              <div className="absolute w-14 h-14 rounded-full bg-accent/20 animate-ping" />
+              <div className="absolute w-10 h-10 rounded-full border border-accent/40 animate-pulse" />
+              <div
+                className="w-5 h-5 rounded-full shadow-accent animate-pulse"
+                style={{
+                  backgroundColor: activeTheme?.accent || 'var(--veron-accent)',
+                  boxShadow: `0 0 20px var(--veron-accent), 0 0 8px var(--veron-accent-hover)`,
+                }}
+              />
             </div>
-            <div className="mt-4 flex items-center gap-1.5 font-mono text-[10px] tracking-wider text-amber-400/90 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+            <div className="mt-4 flex items-center gap-1.5 font-mono text-[10px] tracking-wider text-accent/90 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-ping" />
               <span>INITIALIZING CONPTY SHELL...</span>
             </div>
           </div>

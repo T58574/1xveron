@@ -92,14 +92,14 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={() => setIsWorkspaceDropdownOpen(!isWorkspaceDropdownOpen)}
             title="Switch Workspace Group"
-            className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#141620] border border-amber-400/30 hover:border-amber-400/60 text-zinc-200 text-xs font-medium transition-all shadow-sm"
+            className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#141620] border border-accent/30 hover:border-accent/60 text-zinc-200 text-xs font-medium transition-all shadow-sm"
           >
             {isAntigravity ? (
-              <AntigravityIcon size={15} mode="gradient" className="shrink-0" />
+              <AntigravityIcon size={14} mode="accent" className="shrink-0" />
             ) : activeWorkspace?.is_worktree ? (
-              <GitBranch className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <GitBranch className="w-3.5 h-3.5 text-accent shrink-0" />
             ) : (
-              <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <Layers className="w-3.5 h-3.5 text-accent shrink-0" />
             )}
             <span className="font-semibold text-zinc-100 max-w-[130px] truncate">
               {activeWorkspace?.name || 'Workspace'}
@@ -111,11 +111,11 @@ export const TopBar: React.FC<TopBarProps> = ({
               </span>
             )}
             {isAntigravity && (
-              <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-gradient-to-r from-blue-500/20 via-emerald-500/20 to-amber-500/20 text-amber-300 border border-amber-400/30">
+              <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-accent/20 text-accent border border-accent/30">
                 AGY
               </span>
             )}
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-400/15 text-amber-300 font-mono">
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-accent/15 text-accent font-mono">
               {activeWorkspaceSessionCount}/6
             </span>
             <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -142,14 +142,14 @@ export const TopBar: React.FC<TopBarProps> = ({
                     key={ws.id}
                     onClick={() => onSelectWorkspace(ws.id)}
                     className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/[0.06] transition-colors press-scale ${
-                      isCurrent ? 'text-amber-400 font-medium bg-white/[0.03]' : 'text-zinc-300'
+                      isCurrent ? 'text-accent font-medium bg-white/[0.03]' : 'text-zinc-300'
                     }`}
                   >
                     <div className="flex items-center gap-2 truncate">
                       {isWsAgy ? (
-                        <AntigravityIcon size={14} mode={isCurrent ? 'gradient' : 'amber'} className="shrink-0" />
+                        <AntigravityIcon size={14} mode={isCurrent ? 'gradient' : 'accent'} className="shrink-0" />
                       ) : ws.is_worktree ? (
-                        <GitBranch className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <GitBranch className="w-3.5 h-3.5 text-accent shrink-0" />
                       ) : (
                         <Layers className="w-3.5 h-3.5 shrink-0 opacity-70" />
                       )}
@@ -160,13 +160,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                         </span>
                       )}
                       {isWsAgy && (
-                        <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-amber-400/15 text-amber-300">
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-accent/15 text-accent">
                           AGY
                         </span>
                       )}
                     </div>
                     {isCurrent && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
                     )}
                   </button>
                 );
@@ -179,7 +179,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   setIsWorkspaceDropdownOpen(false);
                   onOpenCreateWorkspaceModal();
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-amber-400 hover:bg-amber-400/10 transition-colors font-medium press-scale"
+                className="w-full flex items-center gap-2 px-3 py-2 text-accent hover:bg-accent/10 transition-colors font-medium press-scale"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>New Workspace Group...</span>
@@ -199,7 +199,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 title={`${label} in this workspace`}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-all duration-200 ease-apple press-scale ${
                   isActive
-                    ? 'bg-amber-400 text-black font-semibold shadow-sm'
+                    ? 'bg-accent text-[var(--veron-accent-fg,#000)] font-semibold shadow-sm shadow-accent'
                     : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
                 }`}
               >
@@ -232,13 +232,13 @@ export const TopBar: React.FC<TopBarProps> = ({
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-200 ease-apple border press-scale ${
               isFull
                 ? 'opacity-40 cursor-not-allowed bg-white/[0.02] border-white/[0.04] text-zinc-500'
-                : 'bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border-amber-400/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]'
+                : 'bg-accent/10 hover:bg-accent/20 text-accent border-accent/30 shadow-accent'
             }`}
           >
             {isAntigravity ? (
               <AntigravityIcon size={14} mode="gradient" className="shrink-0" />
             ) : (
-              <Plus className="w-3.5 h-3.5 text-amber-400" />
+              <Plus className="w-3.5 h-3.5 text-accent" />
             )}
             <span>{isFull ? '6/6 Full' : '+ Add'}</span>
             {!isFull && <ChevronDown className="w-3 h-3 opacity-60" />}
@@ -258,17 +258,17 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <button
                     key={shell.cmd}
                     onClick={() => onCreateSession(shell.cmd)}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-accent text-left transition-colors duration-150 press-scale"
                   >
-                    <TermIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <TermIcon className="w-3.5 h-3.5 text-accent shrink-0" />
                     <span className="truncate">{shell.name}</span>
                   </button>
                 )) || (
                   <button
                     onClick={() => onCreateSession('powershell.exe')}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-accent text-left transition-colors duration-150 press-scale"
                   >
-                    <TermIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <TermIcon className="w-3.5 h-3.5 text-accent shrink-0" />
                     <span>PowerShell</span>
                   </button>
                 )}
@@ -282,7 +282,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 {onSplit && (
                   <button
                     onClick={() => onSplit()}
-                    className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
+                    className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-accent text-left transition-colors duration-150 press-scale"
                   >
                     <div className="flex items-center gap-2">
                       <Plus className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
@@ -295,9 +295,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                 )}
                 <button
                   onClick={() => onOpenCreateWorkspaceModal()}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-accent text-left transition-colors duration-150 press-scale"
                 >
-                  <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <Layers className="w-3.5 h-3.5 text-accent shrink-0" />
                   <span>New Workspace Group...</span>
                 </button>
               </div>
@@ -309,9 +309,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onOpenQuickScripts}
           title="Quick Scripts & Commands (Ctrl+K)"
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.04] hover:bg-white/[0.08] hover:text-amber-400 text-zinc-300 rounded-md text-xs font-medium transition-all duration-200 ease-apple border border-white/[0.06] press-scale"
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.04] hover:bg-white/[0.08] hover:text-accent text-zinc-300 rounded-md text-xs font-medium transition-all duration-200 ease-apple border border-white/[0.06] press-scale"
         >
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <Sparkles className="w-3.5 h-3.5 text-accent" />
           <span className="hidden sm:inline">Scripts</span>
           <span className="hidden md:inline-block px-1.5 py-0.2 text-[10px] font-mono text-zinc-400 bg-black/40 rounded border border-white/[0.08]">
             Ctrl+K
@@ -322,9 +322,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onOpenRemoteModal}
           title="Open Mobile Remote Control"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-400/[0.08] text-amber-300 border border-amber-400/20 hover:bg-amber-400/[0.15] transition-all duration-200 ease-apple press-scale"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-accent/[0.08] text-accent border border-accent/20 hover:bg-accent/[0.15] transition-all duration-200 ease-apple press-scale"
         >
-          <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+          <Smartphone className="w-3.5 h-3.5 text-accent" />
           <span className="hidden sm:inline">Phone Remote</span>
         </button>
 
@@ -332,7 +332,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onToggleTheme}
           title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          className="p-1.5 rounded-md text-zinc-400 hover:text-amber-400 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-all duration-200 ease-apple press-scale"
+          className="p-1.5 rounded-md text-zinc-400 hover:text-accent bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-all duration-200 ease-apple press-scale"
         >
           {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
         </button>

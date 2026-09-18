@@ -266,7 +266,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
     { id: 'system', label: 'System', icon: <Cpu className="w-3 h-3" /> },
     { id: 'git', label: 'Git', icon: <GitBranch className="w-3 h-3" /> },
     { id: 'dev', label: 'Dev', icon: <Wrench className="w-3 h-3" /> },
-    { id: 'custom', label: 'Custom', icon: <Sparkles className="w-3 h-3 text-amber-400" /> },
+    { id: 'custom', label: 'Custom', icon: <Sparkles className="w-3 h-3 text-accent" /> },
   ];
 
   return (
@@ -277,11 +277,11 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl bg-[#0c0d12] border border-white/[0.09] shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[82vh] ring-1 ring-amber-400/30 animate-dialog-in will-change-transform"
+        className="w-full max-w-2xl bg-[#0c0d12] border border-white/[0.09] shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[82vh] ring-1 ring-accent/30 animate-dialog-in will-change-transform"
       >
         {/* Header with Search */}
         <div className="p-3.5 border-b border-white/[0.06] flex items-center gap-3 bg-[#0f1016]">
-          <Search className="w-4 h-4 text-amber-400 shrink-0" />
+          <Search className="w-4 h-4 text-accent shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -291,7 +291,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
             className="flex-1 bg-transparent border-none outline-none text-sm text-zinc-100 placeholder:text-zinc-500 font-sans"
           />
           {activeSessionName && (
-            <span className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-amber-400/[0.08] border border-amber-400/20 text-[11px] text-amber-300 font-mono">
+            <span className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-accent/[0.08] border border-accent/20 text-[11px] text-accent font-mono">
               <Terminal className="w-3 h-3" />
               <span className="truncate max-w-[120px]">{activeSessionName}</span>
             </span>
@@ -313,7 +313,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-150 press-scale ${
                   selectedCategory === cat.id
-                    ? 'bg-amber-400 text-black shadow-sm font-semibold'
+                    ? 'bg-accent text-[var(--veron-accent-fg,#000)] shadow-sm font-semibold'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]'
                 }`}
               >
@@ -325,7 +325,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
 
           <button
             onClick={() => setIsAddingNew(!isAddingNew)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-amber-300 bg-amber-400/[0.08] hover:bg-amber-400/[0.16] border border-amber-400/20 transition-all duration-150 shrink-0"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-accent bg-accent/[0.08] hover:bg-accent/[0.16] border border-accent/20 transition-all duration-150 shrink-0"
           >
             <Plus className="w-3 h-3" />
             <span>{isAddingNew ? 'Cancel' : 'New Script'}</span>
@@ -336,9 +336,9 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
         {isAddingNew && (
           <form
             onSubmit={handleCreateCustom}
-            className="p-3.5 bg-[#13151d] border-b border-amber-400/20 flex flex-col gap-2.5 animate-in slide-in-from-top-2 duration-150"
+            className="p-3.5 bg-[#13151d] border-b border-accent/20 flex flex-col gap-2.5 animate-in slide-in-from-top-2 duration-150"
           >
-            <div className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+            <div className="text-xs font-semibold text-accent flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
               <span>Create Custom Script</span>
             </div>
@@ -348,7 +348,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
                 placeholder="Script Title (e.g. Restart API)"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                className="bg-[#0c0d12] border border-white/[0.08] focus:border-amber-400 rounded-lg px-3 py-1.5 text-xs text-zinc-100 outline-none"
+                className="bg-[#0c0d12] border border-white/[0.08] focus:border-accent rounded-lg px-3 py-1.5 text-xs text-zinc-100 outline-none"
                 autoFocus
               />
               <input
@@ -356,7 +356,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
                 placeholder="Command (e.g. npm run dev)"
                 value={newCommand}
                 onChange={(e) => setNewCommand(e.target.value)}
-                className="bg-[#0c0d12] border border-white/[0.08] focus:border-amber-400 rounded-lg px-3 py-1.5 text-xs font-mono text-zinc-100 outline-none"
+                className="bg-[#0c0d12] border border-white/[0.08] focus:border-accent rounded-lg px-3 py-1.5 text-xs font-mono text-zinc-100 outline-none"
               />
             </div>
             <div className="flex items-center justify-between pt-1">
@@ -365,7 +365,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
                   type="checkbox"
                   checked={newAutoExecute}
                   onChange={(e) => setNewAutoExecute(e.target.checked)}
-                  className="rounded border-zinc-700 text-amber-400 focus:ring-0 focus:ring-offset-0 bg-zinc-900"
+                  className="rounded border-zinc-700 text-accent focus:ring-0 focus:ring-offset-0 bg-zinc-900"
                 />
                 <span>Auto-run immediately (Press Enter)</span>
               </label>
@@ -373,7 +373,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
               <button
                 type="submit"
                 disabled={!newTitle.trim() || !newCommand.trim()}
-                className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-black font-semibold rounded-lg text-xs transition-all shadow-sm"
+                className="px-3.5 py-1.5 bg-accent hover:bg-accent-hover disabled:opacity-50 text-[var(--veron-accent-fg,#000)] font-semibold rounded-lg text-xs transition-all shadow-sm"
               >
                 Save Script
               </button>
@@ -385,7 +385,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {filteredScripts.length === 0 ? (
             <div className="py-12 text-center text-zinc-500 text-xs flex flex-col items-center gap-2">
-              <Terminal className="w-6 h-6 opacity-40 text-amber-400" />
+              <Terminal className="w-6 h-6 opacity-40 text-accent" />
               <span>No scripts match your search</span>
             </div>
           ) : (
@@ -397,7 +397,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
                   onClick={() => runScript(script)}
                   className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all duration-150 border ${
                     isSelected
-                      ? 'bg-amber-400/[0.08] border-amber-400/40 text-amber-100'
+                      ? 'bg-accent/[0.08] border-accent/40 text-accent'
                       : 'border-transparent hover:bg-white/[0.04] text-zinc-300'
                   }`}
                 >
@@ -405,8 +405,8 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
                     <div
                       className={`p-2 rounded-lg shrink-0 transition-colors ${
                         isSelected
-                          ? 'bg-amber-400 text-black'
-                          : 'bg-white/[0.05] text-zinc-400 group-hover:text-amber-400'
+                          ? 'bg-accent text-[var(--veron-accent-fg,#000)]'
+                          : 'bg-white/[0.05] text-zinc-400 group-hover:text-accent'
                       }`}
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
@@ -441,7 +441,7 @@ export const QuickScriptsModal: React.FC<QuickScriptsModalProps> = ({
                     <span
                       className={`px-2 py-1 rounded text-[10px] font-mono transition-opacity flex items-center gap-1 ${
                         isSelected
-                          ? 'opacity-100 bg-amber-400/20 text-amber-300 border border-amber-400/30'
+                          ? 'opacity-100 bg-accent/20 text-accent border border-accent/30'
                           : 'opacity-0 group-hover:opacity-100 bg-white/[0.05] text-zinc-400'
                       }`}
                     >

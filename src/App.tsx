@@ -40,6 +40,13 @@ import { GitDiffModal } from './components/GitDiffModal';
 import { MobileView } from './components/MobileView';
 import { PaneSplitter } from './components/PaneSplitter';
 import { KeyRound, ShieldAlert } from 'lucide-react';
+import {
+  loadThemeSettings,
+  saveThemeSettings,
+  resolveTheme,
+  applyThemeToDOM,
+  ThemeSettings,
+} from './services/theme';
 
 export const App: React.FC = () => {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -85,7 +92,77 @@ export const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isQuickScriptsOpen, setIsQuickScriptsOpen] = useState(false);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  // Theme Settings & Engine
+  const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => {
+    const initial = loadThemeSettings();
+    const resolved = resolveTheme(initial);
+    applyThemeToDOM(resolved);
+    return initial;
+  });
+
+  const activeTheme = resolveTheme(themeSettings);
+  const theme = themeSettings.mode;
+
+  const handleSelectTheme = (themeId: string) => {
+    setThemeSettings((prev) => {
+      const next: ThemeSettings = {
+        ...prev,
+        selectedThemeId: themeId,
+        customAccent: null,
+      };
+      const resolved = resolveTheme(next);
+      applyThemeToDOM(resolved);
+      saveThemeSettings(next);
+      showToast(`Theme: ${resolved.name}`);
+      return next;
+    });
+  };
+
+  const handleSetCustomAccent = (customAccent: string | null) => {
+    setThemeSettings((prev) => {
+      const next: ThemeSettings = {
+        ...prev,
+        selectedThemeId: customAccent ? 'custom' : prev.selectedThemeId === 'custom' ? 'cybran-amber' : prev.selectedThemeId,
+        customAccent,
+      };
+      const resolved = resolveTheme(next);
+      applyThemeToDOM(resolved);
+      saveThemeSettings(next);
+      if (customAccent) {
+        showToast(`Accent: ${customAccent.toUpperCase()}`);
+      } else {
+        showToast('Accent reset to theme default');
+      }
+      return next;
+    });
+  };
+
+  const handleToggleTheme = () => {
+    setThemeSettings((prev) => {
+      const newMode = prev.mode === 'dark' ? 'light' : 'dark';
+      let newThemeId = prev.selectedThemeId;
+      if (newMode === 'light') {
+        if (prev.selectedThemeId === 'cybran-amber') newThemeId = 'light-amber';
+        else if (!prev.selectedThemeId.startsWith('light-') && prev.selectedThemeId !== 'custom') newThemeId = 'light-amber';
+      } else {
+        if (prev.selectedThemeId === 'light-amber') newThemeId = 'cybran-amber';
+        else if (prev.selectedThemeId.startsWith('light-')) newThemeId = 'cybran-amber';
+      }
+
+      const next: ThemeSettings = {
+        ...prev,
+        mode: newMode,
+        selectedThemeId: newThemeId,
+      };
+      const resolved = resolveTheme(next);
+      applyThemeToDOM(resolved);
+      saveThemeSettings(next);
+      showToast(`${newMode === 'dark' ? 'Dark Obsidian' : 'Light Workspace'} Mode`);
+      return next;
+    });
+  };
+
   const [toast, setToast] = useState<string | null>(null);
 
   // AGY Mode (native clipboard media attachments without terminal path injection)
@@ -838,7 +915,7 @@ export const App: React.FC = () => {
           className="w-full max-w-sm bg-[#0f1015] border border-white/[0.08] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
         >
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-400">
+            <div className="p-3 rounded-xl bg-accent/15 border border-accent/30 text-accent">
               <KeyRound className="w-6 h-6" />
             </div>
             <div>
@@ -859,13 +936,13 @@ export const App: React.FC = () => {
             placeholder="e.g. A3F91B2C"
             value={pinInput}
             onChange={(e) => setPinInput(e.target.value.toUpperCase())}
-            className="w-full bg-[#090a0d] border border-white/[0.1] rounded-lg px-3 py-2 text-center text-lg tracking-widest font-mono uppercase text-amber-400 outline-none focus:border-amber-400 transition-colors"
+            className="w-full bg-[#090a0d] border border-white/[0.1] rounded-lg px-3 py-2 text-center text-lg tracking-widest font-mono uppercase text-accent outline-none focus:border-accent transition-colors"
             autoFocus
           />
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-amber-400 hover:bg-amber-300 text-black font-semibold rounded-lg text-sm transition-all duration-150 shadow-sm"
+            className="w-full py-2.5 bg-accent hover:bg-accent-hover text-[var(--veron-accent-fg,#000)] font-semibold rounded-lg text-sm transition-all duration-150 shadow-sm shadow-accent"
           >
             Connect to Veron
           </button>
@@ -900,6 +977,7 @@ export const App: React.FC = () => {
         }}
         onCreateSession={(shell, wsId) => handleCreateSession(shell, wsId || activeWsId)}
         theme={theme}
+        activeTheme={activeTheme}
       />
     );
   }
@@ -937,6 +1015,7 @@ export const App: React.FC = () => {
             if (s) handleRenameSession(s.id, name);
           }}
           theme={theme}
+          activeTheme={activeTheme}
           onToast={showToast}
           agyMode={agyMode}
           onToggleAgyMode={() => handleToggleAgyMode()}
@@ -1218,7 +1297,7 @@ export const App: React.FC = () => {
           onOpenQuickScripts={() => setIsQuickScriptsOpen(true)}
           onCreateSession={(shell) => handleCreateSession(shell, activeWsId)}
           theme={theme}
-          onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          onToggleTheme={handleToggleTheme}
           gitStatus={gitStatus}
           onOpenGitDiff={() => setIsGitDiffOpen(true)}
           activePorts={activePorts}
@@ -1262,7 +1341,11 @@ export const App: React.FC = () => {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         theme={theme}
-        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        onToggleTheme={handleToggleTheme}
+        activeTheme={activeTheme}
+        themeSettings={themeSettings}
+        onSelectTheme={handleSelectTheme}
+        onSetCustomAccent={handleSetCustomAccent}
         capturesInfo={capturesInfo}
         onClearCaptures={handleClearCaptures}
         onOpenCapturesFolder={handleOpenCapturesFolder}
@@ -1290,18 +1373,18 @@ export const App: React.FC = () => {
             pointerEvents: 'none',
             zIndex: 9999,
           }}
-          className="w-56 p-2.5 rounded-xl bg-[#0e1017]/95 border border-amber-400/80 shadow-[0_12px_35px_rgba(0,0,0,0.85),0_0_20px_rgba(245,158,11,0.4)] backdrop-blur-md flex flex-col gap-1.5 transition-transform duration-75 scale-95 rotate-1 select-none"
+          className="w-56 p-2.5 rounded-xl bg-[#0e1017]/95 border border-accent/80 shadow-accent backdrop-blur-md flex flex-col gap-1.5 transition-transform duration-75 scale-95 rotate-1 select-none"
         >
           <div className="flex items-center gap-2 text-xs font-semibold text-zinc-100">
-            <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+            <span className="w-2 h-2 rounded-full bg-accent shadow-[0_0_8px_var(--veron-accent-glow)]" />
             <span className="truncate">{draggingSlot.sessionName}</span>
             {draggingSlot.isAgy && (
-              <span className="text-[9px] px-1 py-0.2 bg-amber-400/20 text-amber-300 rounded font-mono font-bold">
+              <span className="text-[9px] px-1 py-0.2 bg-accent/20 text-accent rounded font-mono font-bold">
                 AGY
               </span>
             )}
           </div>
-          <div className="h-9 rounded bg-black/60 border border-white/[0.06] flex items-center justify-center text-[10px] text-amber-300/80 font-mono">
+          <div className="h-9 rounded bg-black/60 border border-white/[0.06] flex items-center justify-center text-[10px] text-accent/80 font-mono">
             {dragOverSlot !== null && dragOverSlot !== draggingSlot.slotIndex
               ? `Swap with Pane ${dragOverSlot + 1}`
               : 'Drag over another pane'}
@@ -1311,7 +1394,7 @@ export const App: React.FC = () => {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-lg bg-[#0f1015]/95 border border-amber-400/40 text-amber-200 text-xs shadow-2xl backdrop-blur-md animate-toast-in">
+        <div className="fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-lg bg-[#0f1015]/95 border border-accent/40 text-accent text-xs shadow-2xl backdrop-blur-md animate-toast-in">
           {toast}
         </div>
       )}
