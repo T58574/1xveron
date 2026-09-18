@@ -38,6 +38,7 @@ interface TopBarProps {
   onOpenGitDiff: () => void;
   activePorts: DetectedPort[];
   onToast: (msg: string) => void;
+  onSplit?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -58,6 +59,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenGitDiff,
   activePorts,
   onToast,
+  onSplit,
 }) => {
   const [isShellDropdownOpen, setIsShellDropdownOpen] = useState(false);
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
@@ -217,7 +219,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Auto Port Detector Pill */}
         <PortIndicator ports={activePorts} onToast={onToast} />
 
-        {/* Launch Shell / AGY Dropdown */}
+        {/* Quick Add Menu / Launch Shell / AGY Dropdown */}
         <div className="relative">
           <button
             onClick={() => !isFull && setIsShellDropdownOpen(!isShellDropdownOpen)}
@@ -225,14 +227,12 @@ export const TopBar: React.FC<TopBarProps> = ({
             title={
               isFull
                 ? 'Workspace limit reached (max 6 windows)'
-                : isAntigravity
-                ? 'Launch new AGY session in this workspace'
-                : 'Launch new shell in active workspace'
+                : 'Quick Add Menu: Shells, AGY, Split & Workspaces'
             }
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-200 ease-apple border press-scale ${
               isFull
                 ? 'opacity-40 cursor-not-allowed bg-white/[0.02] border-white/[0.04] text-zinc-500'
-                : 'bg-white/[0.04] hover:bg-white/[0.08] hover:text-amber-400 text-zinc-300 border-white/[0.06]'
+                : 'bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border-amber-400/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]'
             }`}
           >
             {isAntigravity ? (
@@ -240,33 +240,67 @@ export const TopBar: React.FC<TopBarProps> = ({
             ) : (
               <Plus className="w-3.5 h-3.5 text-amber-400" />
             )}
-            <span>{isFull ? '6/6 Full' : isAntigravity ? 'New AGY' : 'New Shell'}</span>
+            <span>{isFull ? '6/6 Full' : '+ Add'}</span>
             {!isFull && <ChevronDown className="w-3 h-3 opacity-60" />}
           </button>
 
           {isShellDropdownOpen && !isFull && (
             <div
-              className="absolute right-0 mt-1.5 w-48 rounded-xl bg-[#13151c]/95 border border-white/[0.08] shadow-2xl py-1 z-50 text-xs backdrop-blur-md animate-dropdown-in origin-top-right"
+              className="absolute right-0 mt-1.5 w-56 rounded-xl bg-[#13151c]/95 border border-white/[0.08] shadow-2xl py-1.5 z-50 text-xs backdrop-blur-md animate-dropdown-in origin-top-right divide-y divide-white/[0.06]"
               onClick={() => setIsShellDropdownOpen(false)}
             >
-              {systemInfo?.available_shells?.map((shell: ShellOption) => (
+              {/* Shells Section */}
+              <div className="py-1">
+                <div className="px-3 py-1 text-[10px] font-mono tracking-wider text-zinc-500 uppercase">
+                  Launch Terminal / Agent
+                </div>
+                {systemInfo?.available_shells?.map((shell: ShellOption) => (
+                  <button
+                    key={shell.cmd}
+                    onClick={() => onCreateSession(shell.cmd)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
+                  >
+                    <TermIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="truncate">{shell.name}</span>
+                  </button>
+                )) || (
+                  <button
+                    onClick={() => onCreateSession('powershell.exe')}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
+                  >
+                    <TermIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>PowerShell</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Quick Actions Section */}
+              <div className="py-1">
+                <div className="px-3 py-1 text-[10px] font-mono tracking-wider text-zinc-500 uppercase">
+                  Quick Actions
+                </div>
+                {onSplit && (
+                  <button
+                    onClick={() => onSplit()}
+                    className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Plus className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span>Split Window</span>
+                    </div>
+                    <span className="text-[9px] font-mono text-zinc-500 px-1 py-0.2 bg-black/40 rounded border border-white/[0.06]">
+                      Ctrl+Shift+T
+                    </span>
+                  </button>
+                )}
                 <button
-                  key={shell.cmd}
-                  onClick={() => onCreateSession(shell.cmd)}
-                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
+                  onClick={() => onOpenCreateWorkspaceModal()}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
                 >
-                  <TermIcon className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{shell.name}</span>
+                  <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>New Workspace Group...</span>
                 </button>
-              )) || (
-                <button
-                  onClick={() => onCreateSession('powershell.exe')}
-                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.06] text-zinc-300 hover:text-amber-400 text-left transition-colors duration-150 press-scale"
-                >
-                  <TermIcon className="w-3.5 h-3.5 text-amber-400" />
-                  <span>PowerShell</span>
-                </button>
-              )}
+              </div>
             </div>
           )}
         </div>

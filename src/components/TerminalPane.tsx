@@ -28,6 +28,9 @@ interface TerminalPaneProps {
   agyMode?: boolean;
   onToggleAgyMode?: () => void;
   isAntigravity?: boolean;
+  slotIndex?: number;
+  onStartDrag?: (slotIdx: number, session: SessionInfo, e: React.PointerEvent) => void;
+  isDragOver?: boolean;
 }
 
 export const TerminalPane: React.FC<TerminalPaneProps> = ({
@@ -45,6 +48,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   agyMode = true,
   onToggleAgyMode,
   isAntigravity = false,
+  slotIndex,
+  onStartDrag,
+  isDragOver = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -61,6 +67,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const [newName, setNewName] = useState(session?.name || '');
   const [isBelling, setIsBelling] = useState(false);
   const [isAwaitingInput, setIsAwaitingInput] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!session) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [session?.id]);
 
   useEffect(() => {
     setNewName(session?.name || '');
@@ -794,7 +813,13 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
   if (!session) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center border border-dashed border-white/[0.08] hover:border-amber-400/30 rounded-xl m-1 p-6 text-zinc-500 bg-[#0d0e13]/60 hover:bg-[#0d0e13]/80 transition-all duration-300 ease-apple">
+      <div
+        className={`flex-1 flex flex-col items-center justify-center border border-dashed rounded-xl m-1 p-6 transition-all duration-300 ease-apple ${
+          isDragOver
+            ? 'border-amber-400 bg-amber-400/10 ring-2 ring-amber-400/80 scale-[0.99]'
+            : 'border-white/[0.08] hover:border-amber-400/30 text-zinc-500 bg-[#0d0e13]/60 hover:bg-[#0d0e13]/80'
+        }`}
+      >
         {isAntigravity ? (
           <AntigravityIcon size={28} mode="amber" className="mb-2 opacity-50" />
         ) : (
@@ -837,7 +862,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           ? 'bg-[#0c0d12] border border-white/[0.07] shadow-card'
           : 'bg-white border border-zinc-200 shadow-sm'
       } ${
-        isBelling
+        isDragOver
+          ? 'ring-2 ring-amber-400 bg-amber-400/[0.03] shadow-[0_0_30px_rgba(245,158,11,0.35)] scale-[0.995]'
+          : isBelling
           ? 'ring-2 ring-amber-400/90 shadow-[0_0_25px_rgba(245,158,11,0.5)] border-amber-400'
           : isActive
             ? 'ring-1 ring-amber-400/70 border-amber-400/40 shadow-pane-active'
@@ -846,7 +873,13 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     >
       {/* Precision Pane Header */}
       <div
-        className={`h-9 px-3 flex items-center justify-between select-none border-b transition-colors duration-150 ${
+        onPointerDown={(e) => {
+          if ((e.target as HTMLElement).closest('button, input')) return;
+          if (slotIndex !== undefined && onStartDrag && session) {
+            onStartDrag(slotIndex, session, e);
+          }
+        }}
+        className={`h-9 px-3 flex items-center justify-between select-none border-b transition-colors duration-150 cursor-grab active:cursor-grabbing ${
           isDark
             ? 'bg-[#121319] border-white/[0.06] text-zinc-300'
             : 'bg-zinc-50 border-zinc-200 text-zinc-700'
@@ -888,7 +921,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           ) : (
             <span
               onDoubleClick={() => setIsEditingName(true)}
-              title="Double click to rename session"
+              title="Double click to rename session (Drag header to reorder)"
               className="text-xs font-medium truncate min-w-0 flex-shrink text-zinc-100 tracking-tight cursor-pointer hover:text-amber-400 transition-colors"
             >
               {session.name}
@@ -1014,6 +1047,21 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       {/* Terminal Viewport */}
       <div className="flex-1 relative w-full h-full overflow-hidden p-1">
         <div ref={containerRef} className="w-full h-full" />
+
+        {/* 0.4s Cybran Amber Pulsing Energy Sphere Loader on Launch */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-[#0c0d12]/95 backdrop-blur-sm flex flex-col items-center justify-center z-30 transition-opacity duration-300 pointer-events-none">
+            <div className="relative flex items-center justify-center">
+              <div className="absolute w-14 h-14 rounded-full bg-amber-400/20 animate-ping" />
+              <div className="absolute w-10 h-10 rounded-full border border-amber-400/40 animate-pulse" />
+              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-amber-500 to-amber-300 shadow-[0_0_20px_#f59e0b,0_0_8px_#fbbf24] animate-pulse" />
+            </div>
+            <div className="mt-4 flex items-center gap-1.5 font-mono text-[10px] tracking-wider text-amber-400/90 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+              <span>INITIALIZING CONPTY SHELL...</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

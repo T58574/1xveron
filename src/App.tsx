@@ -38,6 +38,7 @@ import { QuickScriptsModal } from './components/QuickScriptsModal';
 import { CreateWorkspaceModal } from './components/CreateWorkspaceModal';
 import { GitDiffModal } from './components/GitDiffModal';
 import { MobileView } from './components/MobileView';
+import { PaneSplitter } from './components/PaneSplitter';
 import { KeyRound, ShieldAlert } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -55,6 +56,26 @@ export const App: React.FC = () => {
   const [workspaceSlots, setWorkspaceSlots] = useState<Record<string, (string | null)[]>>({});
   // Layout Mode (1-6) per Workspace
   const [workspaceLayouts, setWorkspaceLayouts] = useState<Record<string, LayoutMode>>({});
+
+  // Dynamic Split Ratios per Workspace (Mode 2 - Mode 6)
+  const [workspaceRatios, setWorkspaceRatios] = useState<Record<string, Record<string, number>>>(() => {
+    try {
+      const saved = localStorage.getItem('veron_layout_ratios');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Window Drag & Drop Reordering State
+  const [draggingSlot, setDraggingSlot] = useState<{
+    slotIndex: number;
+    sessionName: string;
+    isAgy: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
 
   const [activePaneIndex, setActivePaneIndex] = useState<number>(0);
   const [maximizedPaneIndex, setMaximizedPaneIndex] = useState<number | null>(null);
@@ -148,6 +169,40 @@ export const App: React.FC = () => {
     }));
   };
 
+  const updateRatio = (key: string, value: number) => {
+    const clamped = Math.max(15, Math.min(85, value));
+    setWorkspaceRatios((prev) => {
+      const next = {
+        ...prev,
+        [activeWsId]: {
+          ...(prev[activeWsId] || {}),
+          [key]: clamped,
+        },
+      };
+      try {
+        localStorage.setItem('veron_layout_ratios', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const resetRatio = (key: string, defaultValue = 50) => {
+    setWorkspaceRatios((prev) => {
+      const next = {
+        ...prev,
+        [activeWsId]: {
+          ...(prev[activeWsId] || {}),
+          [key]: defaultValue,
+        },
+      };
+      try {
+        localStorage.setItem('veron_layout_ratios', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast('Reset pane layout');
+  };
+
   const handleSelectWorkspace = (wsId: string) => {
     setActiveWorkspaceId(wsId);
     localStorage.setItem('veron_active_workspace', wsId);
@@ -181,7 +236,7 @@ export const App: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Helper to synchronize slots with incoming sessions for a workspace
+  // Helper to synchronize slots with incoming sessions for a workspace (guarantees strict uniqueness & zero duplication)
   const syncWorkspaceSlots = (
     currentWorkspaces: Workspace[],
     allSessions: SessionInfo[]
@@ -197,28 +252,28 @@ export const App: React.FC = () => {
           ? [...next[ws.id]]
           : [null, null, null, null, null, null];
 
-        // 1. Remove session IDs that no longer exist
+        // 1. Remove session IDs that no longer exist or are duplicates
+        const seen = new Set<string>();
         for (let i = 0; i < 6; i++) {
-          if (existingSlots[i] && !wsSessions.some((s) => s.id === existingSlots[i])) {
-            existingSlots[i] = null;
-          }
-        }
-
-        // 2. Add unassigned sessions to empty slots
-        let wsIdx = 0;
-        for (let i = 0; i < 6; i++) {
-          if (!existingSlots[i] && wsIdx < wsSessions.length) {
-            const candidate = wsSessions[wsIdx];
-            if (!existingSlots.includes(candidate.id)) {
-              existingSlots[i] = candidate.id;
+          const sid = existingSlots[i];
+          if (sid) {
+            if (seen.has(sid) || !wsSessions.some((s) => s.id === sid)) {
+              existingSlots[i] = null;
+            } else {
+              seen.add(sid);
             }
-            wsIdx++;
           }
         }
 
-        // Ensure slot 0 has first session if available
-        if (!existingSlots[0] && wsSessions.length > 0) {
-          existingSlots[0] = wsSessions[0].id;
+        // 2. Add unassigned sessions to empty slots without creating duplicates
+        for (const sess of wsSessions) {
+          if (!seen.has(sess.id)) {
+            const emptyIdx = existingSlots.findIndex((s) => s === null);
+            if (emptyIdx !== -1) {
+              existingSlots[emptyIdx] = sess.id;
+              seen.add(sess.id);
+            }
+          }
         }
 
         next[ws.id] = existingSlots;
@@ -488,18 +543,127 @@ export const App: React.FC = () => {
   const handleCloseSession = async (id: string) => {
     try {
       await closeSession(id);
+
+      const targetSession = sessions.find((s) => s.id === id);
+      const targetWsId = targetSession?.workspace_id || activeWsId;
+
       setSessions((prev) => prev.filter((s) => s.id !== id));
+
+      // 1. Compact slots for this workspace (shift remaining sessions to slots 0, 1, ...)
       setWorkspaceSlots((prev) => {
         const next = { ...prev };
         for (const wsId in next) {
-          next[wsId] = next[wsId].map((sid) => (sid === id ? null : sid));
+          const remaining = next[wsId].filter((sid) => sid && sid !== id);
+          const compacted: (string | null)[] = [null, null, null, null, null, null];
+          remaining.forEach((sid, idx) => {
+            if (idx < 6) compacted[idx] = sid;
+          });
+          next[wsId] = compacted;
         }
         return next;
       });
+
+      // 2. Automatically reduce layout mode: if 2 open and 1 closed -> becomes 1!
+      const remainingCount = sessions.filter(
+        (s) =>
+          (s.workspace_id === targetWsId || (!s.workspace_id && targetWsId === 'default')) &&
+          s.id !== id
+      ).length;
+
+      const adaptedMode = Math.max(1, Math.min(6, remainingCount)) as LayoutMode;
+      setWorkspaceLayouts((prev) => ({
+        ...prev,
+        [targetWsId]: adaptedMode,
+      }));
+
+      // 3. Reset activePaneIndex and maximizedPaneIndex
+      setActivePaneIndex((prev) => Math.max(0, Math.min(prev, Math.max(0, remainingCount - 1))));
+      if (maximizedPaneIndex !== null) {
+        setMaximizedPaneIndex(null);
+      }
+
       showToast('Session closed');
     } catch {
       showToast('Failed to close session');
     }
+  };
+
+  // Window Drag & Drop Handler (Dragging window header to reorder / swap panes)
+  const handleStartDrag = (
+    slotIdx: number,
+    session: SessionInfo,
+    e: React.PointerEvent
+  ) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let isDraggingActive = false;
+
+    const isAgy =
+      session.name.toLowerCase().includes('agy') ||
+      session.name.toLowerCase().includes('antigravity');
+
+    const handlePointerMove = (moveEv: PointerEvent) => {
+      const dist = Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY);
+      if (!isDraggingActive && dist > 5) {
+        isDraggingActive = true;
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'grabbing';
+      }
+
+      if (isDraggingActive) {
+        setDraggingSlot({
+          slotIndex: slotIdx,
+          sessionName: session.name,
+          isAgy,
+          x: moveEv.clientX,
+          y: moveEv.clientY,
+        });
+
+        // Detect which terminal slot the cursor is currently over
+        const elements = document.elementsFromPoint(moveEv.clientX, moveEv.clientY);
+        let foundSlot: number | null = null;
+        for (const el of elements) {
+          const slotAttr = el.getAttribute('data-slot-index');
+          if (slotAttr !== null) {
+            foundSlot = parseInt(slotAttr, 10);
+            break;
+          }
+        }
+        setDragOverSlot(foundSlot);
+      }
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+
+      if (isDraggingActive) {
+        setDragOverSlot((targetSlot) => {
+          if (targetSlot !== null && targetSlot !== slotIdx) {
+            // Swap slots in current workspace
+            setWorkspaceSlots((prev) => {
+              const current = prev[activeWsId]
+                ? [...prev[activeWsId]]
+                : [null, null, null, null, null, null];
+              const temp = current[slotIdx];
+              current[slotIdx] = current[targetSlot];
+              current[targetSlot] = temp;
+              return { ...prev, [activeWsId]: current };
+            });
+            setActivePaneIndex(targetSlot);
+            showToast(`Moved ${session.name} to Pane ${targetSlot + 1}`);
+          }
+          return null;
+        });
+        setDraggingSlot(null);
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
   };
 
   // Global Keyboard Shortcuts:
@@ -749,39 +913,49 @@ export const App: React.FC = () => {
   const renderPane = (idx: number) => {
     const s = getSessionForSlot(idx);
     return (
-      <TerminalPane
+      <div
         key={`${activeWsId}-pane-${idx}-${s?.id || 'empty'}`}
-        session={s}
-        isActive={activePaneIndex === idx}
-        isMaximized={maximizedPaneIndex === idx}
-        onFocus={() => {
-          setActivePaneIndex(idx);
-          if (s) {
-            updateActiveState(activeWsId, s.id);
-          }
-        }}
-        onClose={() => {
-          if (s) handleCloseSession(s.id);
-        }}
-        onMaximize={() => setMaximizedPaneIndex(maximizedPaneIndex === idx ? null : idx)}
-        onSplit={handleSplitPane}
-        onRename={(name) => {
-          if (s) handleRenameSession(s.id, name);
-        }}
-        theme={theme}
-        onToast={showToast}
-        agyMode={agyMode}
-        onToggleAgyMode={() => handleToggleAgyMode()}
-        isAntigravity={Boolean(isAntigravityWorkspace)}
-      />
+        data-slot-index={idx}
+        className="flex-1 flex w-full h-full min-w-0 min-h-0 relative"
+      >
+        <TerminalPane
+          session={s}
+          isActive={activePaneIndex === idx}
+          isMaximized={maximizedPaneIndex === idx}
+          onFocus={() => {
+            setActivePaneIndex(idx);
+            if (s) {
+              updateActiveState(activeWsId, s.id);
+            }
+          }}
+          onClose={() => {
+            if (s) handleCloseSession(s.id);
+          }}
+          onMaximize={() => setMaximizedPaneIndex(maximizedPaneIndex === idx ? null : idx)}
+          onSplit={handleSplitPane}
+          onRename={(name) => {
+            if (s) handleRenameSession(s.id, name);
+          }}
+          theme={theme}
+          onToast={showToast}
+          agyMode={agyMode}
+          onToggleAgyMode={() => handleToggleAgyMode()}
+          isAntigravity={Boolean(isAntigravityWorkspace)}
+          slotIndex={idx}
+          onStartDrag={handleStartDrag}
+          isDragOver={dragOverSlot === idx}
+        />
+      </div>
     );
   };
 
-  // Render desktop grid layout based on 1 to 6 windows
+  // Render desktop grid layout based on 1 to 6 windows with interactive resizing
   const renderGridLayout = () => {
     if (maximizedPaneIndex !== null) {
       return renderPane(maximizedPaneIndex);
     }
+
+    const ratios = workspaceRatios[activeWsId] || {};
 
     switch (currentLayoutMode) {
       case 1:
@@ -791,54 +965,213 @@ export const App: React.FC = () => {
           </div>
         );
 
-      case 2:
+      case 2: {
+        const colRatio = ratios.mode2_col ?? 50;
         return (
-          <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
-            {[0, 1].map(renderPane)}
-          </div>
-        );
-
-      case 3:
-        // 1 tall left + 2 stacked right
-        return (
-          <div className="flex-1 flex gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
-            <div className="flex-1 flex min-w-0 min-h-0 transition-all duration-300 ease-apple">
+          <div className="flex-1 flex w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
+            <div style={{ width: `${colRatio}%` }} className="flex min-w-0 min-h-0">
               {renderPane(0)}
             </div>
-            <div className="flex-1 flex flex-col gap-2 min-w-0 min-h-0 transition-all duration-300 ease-apple">
-              {[1, 2].map(renderPane)}
+            <PaneSplitter
+              direction="vertical"
+              onResize={(delta) => updateRatio('mode2_col', colRatio + delta)}
+              onReset={() => resetRatio('mode2_col')}
+            />
+            <div style={{ width: `${100 - colRatio}%` }} className="flex min-w-0 min-h-0">
+              {renderPane(1)}
             </div>
           </div>
         );
+      }
 
-      case 4:
+      case 3: {
+        // 1 tall left + 2 stacked right
+        const colRatio = ratios.mode3_col ?? 50;
+        const rowRatio = ratios.mode3_row ?? 50;
+        return (
+          <div className="flex-1 flex w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
+            <div style={{ width: `${colRatio}%` }} className="flex min-w-0 min-h-0">
+              {renderPane(0)}
+            </div>
+            <PaneSplitter
+              direction="vertical"
+              onResize={(delta) => updateRatio('mode3_col', colRatio + delta)}
+              onReset={() => resetRatio('mode3_col')}
+            />
+            <div style={{ width: `${100 - colRatio}%` }} className="flex flex-col min-w-0 min-h-0 overflow-hidden">
+              <div style={{ height: `${rowRatio}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(1)}
+              </div>
+              <PaneSplitter
+                direction="horizontal"
+                onResize={(delta) => updateRatio('mode3_row', rowRatio + delta)}
+                onReset={() => resetRatio('mode3_row')}
+              />
+              <div style={{ height: `${100 - rowRatio}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(2)}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      case 4: {
         // 2x2 Grid
+        const colRatio = ratios.mode4_col ?? 50;
+        const rowRatio = ratios.mode4_row ?? 50;
         return (
-          <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
-            {[0, 1, 2, 3].map(renderPane)}
+          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
+            {/* Top row: Panes 0 & 1 */}
+            <div style={{ height: `${rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${colRatio}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(0)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode4_col', colRatio + delta)}
+                onReset={() => resetRatio('mode4_col')}
+              />
+              <div style={{ width: `${100 - colRatio}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(1)}
+              </div>
+            </div>
+            <PaneSplitter
+              direction="horizontal"
+              onResize={(delta) => updateRatio('mode4_row', rowRatio + delta)}
+              onReset={() => resetRatio('mode4_row')}
+            />
+            {/* Bottom row: Panes 2 & 3 */}
+            <div style={{ height: `${100 - rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${colRatio}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(2)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode4_col', colRatio + delta)}
+                onReset={() => resetRatio('mode4_col')}
+              />
+              <div style={{ width: `${100 - colRatio}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(3)}
+              </div>
+            </div>
           </div>
         );
+      }
 
-      case 5:
+      case 5: {
         // 2 on top, 3 on bottom
+        const rowRatio = ratios.mode5_row ?? 50;
+        const topCol = ratios.mode5_topCol ?? 50;
+        const bot1 = ratios.mode5_bot1 ?? 33.33;
+        const bot2 = ratios.mode5_bot2 ?? 33.33;
+        const bot3 = Math.max(10, 100 - bot1 - bot2);
         return (
-          <div className="flex-1 flex flex-col gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
-            <div className="flex-1 flex gap-2 min-h-0 min-w-0 transition-all duration-300 ease-apple">
-              {[0, 1].map(renderPane)}
+          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
+            {/* Top row */}
+            <div style={{ height: `${rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${topCol}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(0)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode5_topCol', topCol + delta)}
+                onReset={() => resetRatio('mode5_topCol')}
+              />
+              <div style={{ width: `${100 - topCol}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(1)}
+              </div>
             </div>
-            <div className="flex-1 flex gap-2 min-h-0 min-w-0 transition-all duration-300 ease-apple">
-              {[2, 3, 4].map(renderPane)}
+            <PaneSplitter
+              direction="horizontal"
+              onResize={(delta) => updateRatio('mode5_row', rowRatio + delta)}
+              onReset={() => resetRatio('mode5_row')}
+            />
+            {/* Bottom row */}
+            <div style={{ height: `${100 - rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${bot1}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(2)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode5_bot1', bot1 + delta)}
+                onReset={() => resetRatio('mode5_bot1', 33.33)}
+              />
+              <div style={{ width: `${bot2}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(3)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode5_bot2', bot2 + delta)}
+                onReset={() => resetRatio('mode5_bot2', 33.33)}
+              />
+              <div style={{ width: `${bot3}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(4)}
+              </div>
             </div>
           </div>
         );
+      }
 
-      case 6:
+      case 6: {
         // 2 rows of 3 columns (2x3 Grid)
+        const rowRatio = ratios.mode6_row ?? 50;
+        const col1 = ratios.mode6_col1 ?? 33.33;
+        const col2 = ratios.mode6_col2 ?? 33.33;
+        const col3 = Math.max(10, 100 - col1 - col2);
         return (
-          <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-2 w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple">
-            {[0, 1, 2, 3, 4, 5].map(renderPane)}
+          <div className="flex-1 flex flex-col w-full h-full min-h-0 min-w-0 transition-all duration-300 ease-apple overflow-hidden">
+            {/* Top row */}
+            <div style={{ height: `${rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${col1}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(0)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode6_col1', col1 + delta)}
+                onReset={() => resetRatio('mode6_col1', 33.33)}
+              />
+              <div style={{ width: `${col2}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(1)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode6_col2', col2 + delta)}
+                onReset={() => resetRatio('mode6_col2', 33.33)}
+              />
+              <div style={{ width: `${col3}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(2)}
+              </div>
+            </div>
+            <PaneSplitter
+              direction="horizontal"
+              onResize={(delta) => updateRatio('mode6_row', rowRatio + delta)}
+              onReset={() => resetRatio('mode6_row')}
+            />
+            {/* Bottom row */}
+            <div style={{ height: `${100 - rowRatio}%` }} className="flex min-w-0 min-h-0 overflow-hidden">
+              <div style={{ width: `${col1}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(3)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode6_col1', col1 + delta)}
+                onReset={() => resetRatio('mode6_col1', 33.33)}
+              />
+              <div style={{ width: `${col2}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(4)}
+              </div>
+              <PaneSplitter
+                direction="vertical"
+                onResize={(delta) => updateRatio('mode6_col2', col2 + delta)}
+                onReset={() => resetRatio('mode6_col2', 33.33)}
+              />
+              <div style={{ width: `${col3}%` }} className="flex min-w-0 min-h-0">
+                {renderPane(5)}
+              </div>
+            </div>
           </div>
         );
+      }
     }
   };
 
@@ -890,6 +1223,7 @@ export const App: React.FC = () => {
           onOpenGitDiff={() => setIsGitDiffOpen(true)}
           activePorts={activePorts}
           onToast={showToast}
+          onSplit={handleSplitPane}
         />
 
         {/* Dynamic Card Grid for Active Workspace (1 to 6 Panes) */}
@@ -945,6 +1279,35 @@ export const App: React.FC = () => {
         onExecuteScript={handleExecuteScript}
         activeSessionName={activeSession?.name}
       />
+
+      {/* Floating Ghost Window Thumbnail when dragging header */}
+      {draggingSlot && (
+        <div
+          style={{
+            position: 'fixed',
+            left: draggingSlot.x - 90,
+            top: draggingSlot.y - 35,
+            pointerEvents: 'none',
+            zIndex: 9999,
+          }}
+          className="w-56 p-2.5 rounded-xl bg-[#0e1017]/95 border border-amber-400/80 shadow-[0_12px_35px_rgba(0,0,0,0.85),0_0_20px_rgba(245,158,11,0.4)] backdrop-blur-md flex flex-col gap-1.5 transition-transform duration-75 scale-95 rotate-1 select-none"
+        >
+          <div className="flex items-center gap-2 text-xs font-semibold text-zinc-100">
+            <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+            <span className="truncate">{draggingSlot.sessionName}</span>
+            {draggingSlot.isAgy && (
+              <span className="text-[9px] px-1 py-0.2 bg-amber-400/20 text-amber-300 rounded font-mono font-bold">
+                AGY
+              </span>
+            )}
+          </div>
+          <div className="h-9 rounded bg-black/60 border border-white/[0.06] flex items-center justify-center text-[10px] text-amber-300/80 font-mono">
+            {dragOverSlot !== null && dragOverSlot !== draggingSlot.slotIndex
+              ? `Swap with Pane ${dragOverSlot + 1}`
+              : 'Drag over another pane'}
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toast && (
