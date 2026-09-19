@@ -1,556 +1,71 @@
-# Veron — Project State & Architectural Memory 🧠
+# Veron — Current Project State 🧠
 
-> **Документ долгосрочной памяти проекта Veron**. Содержит полный контекст архитектуры, историю решений, протоколы взаимодействия, известные подводные камни и дорожную карту для будущих сессий и AI-агентов.
-
----
-
-## 1. Карточка проекта
-
-- **Продукт**: `Veron` — сверхбыстрый, модульный десктопный терминальный мультиплексор для Windows.
-- **Архитектура**:
-  - **Desktop Native**: `tao 0.37` (Windowing & Event Loop) + `wry 0.57` (WebView2).
-  - **Backend Core**: `portable-pty 0.8` (ConPTY), `tokio 1.40`, `axum 0.7`, `tower-http 0.6`, `rust-embed 8.12`.
-  - **Frontend UI**: React 18, TypeScript, Tailwind CSS, `@xterm/xterm 5.5` (WebGL + Fit addons), Lucide icons.
-  - **Портативность**: Единый автономный бинарник `veron.exe` (3.7 МБ) со вшитыми фронтенд-ассетами.
-- **Дизайн**: **Cybran Yellow & Black** (`#090a0d` обсидиан + `#f59e0b` янтарное золото). Строгая инженерная эстетика уровня Apple/BridgeMind/Warp без визуального шума.
-- **Репозиторий**: Ветка `main` в `C:\Users\user\Documents\dev\veron`.
+> **Living Architectural Memory & System Grounding for AI Agents**.  
+> **Rule**: Keep this file under 120 lines. Do NOT write milestone changelog diaries here — use `git log` instead.
 
 ---
 
-## 2. Архитектура системы
+## 1. Core Architecture
 
 ```
-                             ┌───────────────────────────────────┐
-                             │       NATIVE WINDOW (Tao + Wry)   │
-                             │  WebView2 (1366x820)             │
-                             │  URL: localhost:4567?token=...    │
-                             └─────────────────┬─────────────────┘
-                                               │ (HTTP / WS)
-                                               ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           RUST CORE (veron.exe)                                 │
-│                                                                                 │
-│  [Main Thread]                                                                  │
-│  ├── EventLoop (Tao): WindowEvent::CloseRequested -> session_manager.close_all() │
-│  └── Arc<SessionManager>                                                        │
-│                                                                                 │
-│  [Background Tokio Runtime]                                                     │
-│  ├── SessionManager (src/session.rs)                                            │
-│  │   ├── sessions: Arc<RwLock<HashMap<id, Arc<Session>>>>                       │
-│  │   ├── history: Arc<Mutex<Vec<u8>>> (512KB кольцевой буфер на сессию)         │
-│  │   ├── captures_dir: .veron/captures/                                         │
-│  │   ├── close_all() -> taskkill /PID <pid> /T /F (Zero Zombies Guarantee)      │
-│  │   └── rename_session(id, name)                                               │
-│  │                                                                              │
-│  ├── ConPTY Engine (src/pty.rs)                                                 │
-│  │   └── portable-pty (powershell.exe -NoLogo, cmd.exe, wsl.exe, bash.exe)       │
-│  │                                                                              │
-│  └── Axum HTTP/WS Server (src/server.rs : 4567)                                 │
-│      ├── Security: Token Guard (Bearer / ?token= / X-Veron-Token)               │
-│      ├── Static Assets: rust-embed (embedded dist/) + disk fallback             │
-│      ├── Terminal WS: /ws/terminal/:id (стриминг ввода/вывода)                  │
-│      └── Endpoints: /api/system, /api/sessions, /api/upload, /api/captures      │
-└───────────────────────┬───────────────────────────────────┬─────────────────────┘
-                        │                                   │ (Wi-Fi 0.0.0.0:4567)
-                        ▼                                   ▼
-          ┌───────────────────────────┐       ┌───────────────────────────┐
-          │     Desktop UI (React)    │       │   Mobile Couch Mode       │
-          │ - 1..6 Grid + Persistence │       │ - Fullscreen (No splits)  │
-          │ - Command Palette (Ctrl+K)│       │ - Touch Developer Toolbar │
-          │ - Captures / Explorer     │       │ - Session Switcher Dropdown│
-          │ - Session Rename (DblClick│       │ - VisualViewport Auto-Fit │
-          └───────────────────────────┘       └───────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 NATIVE WINDOW (Tao + Wry WebView2)          │
+│              React 18 + Tailwind CSS + xterm.js WebGL       │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ (HTTP & WebSocket localhost:4567)
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     RUST CORE (veron.exe)                   │
+│                                                             │
+│ • Axum Server (src/server.rs : 4567): Token Auth, REST, WS  │
+│ • SessionManager (src/session.rs): ConPTY sessions & ring   │
+│ • Process Termination: taskkill /PID <pid> /T /F (0 zombies)│
+│ • Audio: Procedure Web Audio Synthesizer (sound.ts)         │
+│ • ExtendedTcpTable (src/ports.rs): Win32 native port scanner│
+│ • Clipboard (src/clipboard.rs): Win32 CF_UNICODETEXT API    │
+│ • Assets: Embedded dist/ via rust-embed (fallback to disk)  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Спецификация REST & WebSocket API
+## 2. Active REST & WebSocket Endpoints
 
-Все приватные endpoints защищены токеном авторизации (`?token=...` или заголовок `Authorization: Bearer <token>`):
+All endpoints require Bearer auth (`?token=...` or `Authorization: Bearer <token>`):
 
-| Метод | Путь | Описание |
-|---|---|---|
-| `GET` | `/api/system` | Информация о системе: локальный IP, shells, QR/LAN URL, токен |
-| `POST` | `/api/auth/verify` | Валидация введенного PIN-кода на клиенте |
-| `GET` | `/api/sessions` | Список всех активных терминальных сессий |
-| `POST` | `/api/sessions` | Создание новой сессии (`shell`, `cwd`, `name`, `workspace_id`) |
-| `DELETE` | `/api/sessions/:id` | Завершение сессии со сносом дерева процессов (`taskkill /T /F`) |
-| `PATCH` | `/api/sessions/:id` | Переименование сессии (`{ "name": "..." }`) |
-| `POST` | `/api/sessions/:id/resize` | Изменение геометрии PTY (`{ "rows": N, "cols": N }`) |
-| `POST` | `/api/sessions/:id/input` | Отправка команды в терминал через REST (`{ "data": "..." }`) |
-| `POST` | `/api/upload` | Сохранение base64-картинки в `.veron/captures` + вставка пути в stdin |
-| `GET` | `/api/captures` | Метаданные скриншотов (кол-во файлов, размер на диске) |
-| `DELETE` | `/api/captures` | Полная очистка папки `.veron/captures` |
-| `POST` | `/api/captures/open` | Мгновенное открытие папки со скриншотами в Проводнике Windows |
-| `GET` | `/api/workspaces` | Список рабочих пространств |
-| `GET` | `/ws/terminal/:id` | WebSocket терминала (двусторонний бинарный и текстовый обмен) |
-| `*` | `/*` (fallback) | Отдача статики React: сначала диск (`./dist`), затем `rust-embed` |
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/api/system` | System info (LAN IP, shells, token status, port) |
+| `GET`/`POST`/`DELETE` | `/api/sessions` | CRUD ConPTY terminal sessions |
+| `POST` | `/api/sessions/:id/input` | Send keystrokes / input to terminal stdin |
+| `POST` | `/api/sessions/:id/resize` | Resize ConPTY buffer geometry (`rows`, `cols`) |
+| `GET` | `/ws/terminal/:id` | Terminal bi-directional streaming (replays 512KB ring buffer) |
+| `POST` | `/api/upload` / `/upload/batch` | Save base64 image captures to `.veron/captures/` |
+| `GET`/`DELETE` | `/api/captures` | Get captures count/size or delete all captures |
+| `POST` | `/api/captures/cleanup` | Prune captures (`older_than_days`, `max_total_mb`) |
+| `POST` | `/api/captures/open` | Reveal captures in Windows Explorer via `ShellExecuteW` |
+| `GET`/`POST`/`DELETE` | `/api/workspaces` | Workspace group management & persistence |
+| `GET` | `/api/git/status` / `diff` | Batched git status & untracked unified diff |
+| `GET`/`POST` | `/api/clipboard` | Win32 native clipboard read/write gateway |
+| `GET` | `/api/ports` | Active listening TCP ports mapped to terminal PIDs |
 
 ---
 
-## 4. История ключевых архитектурных вех (Changelog)
+## 3. Strict Operating Invariants for AI Agents
 
-### Milestone 1 (`ee8c008`): Нативное окно Tao + Wry
-- Добавлены зависимости `wry 0.57` и `tao 0.37`.
-- Сервер Axum и ConPTY вынесены в фоновый поток Tokio.
-- На главном потоке создано нативное десктопное окно Windows с WebView2.
-- Добавлен флаг `--server-only` для возможности запуска в headless-режиме.
-
-### Milestone 2 (`63dbdf9`): Палитра быстрых скриптов (`Ctrl+K`) и Проводник
-- Создан компонент `QuickScriptsModal.tsx` с пресетами системных, git и dev-команд.
-- Добавлена поддержка кастомных скриптов в `localStorage`.
-- Добавлен endpoint `/api/captures/open` с вызовом `explorer.exe` из Rust.
-- Добавлен REST input endpoint `/api/sessions/:id/input`.
-
-### Milestone 3 (`9d7d3a3`, `78023b8`): Гарантия чистого завершения процессов (Zero Zombies)
-- В `pty.rs` метод `kill()` переписан: синхронный `taskkill /PID <pid> /T /F` с флагом `CREATE_NO_WINDOW` и `child.wait()`.
-- В `SessionManager` добавлен метод `close_all()` и `impl Drop`.
-- В `main.rs` перехват события `WindowEvent::CloseRequested` (крестик) и `Ctrl+C` теперь принудительно зачищает все деревья процессов.
-- Исправлен контекст создания сессии внутри Tokio runtime reactor.
-
-### Milestone 4 (`7e41fc7`, `bae6c98`, `73a6207`): Полная портативность через `rust-embed`
-- Все фронтенд-ассеты вшиты в релизный бинарник `veron.exe` (3.7 МБ).
-- Бинарник скопирован в корень проекта для запуска в 1 клик.
-- Настроен `.gitignore` для исключения бинарников из системы контроля версий.
-
-### Milestone 7: Безупречный перехват скриншотов из буфера обмена и относительные пути
-- **DOM Capture Phase Listener**: Перехват события `paste` на уровне DOM container и `window` в фазе capture (`{ capture: true }`), предотвращающий проглатывание скриншота внутренним `textarea` xterm.js (`stopPropagation()`).
-- **Relative Path Resolution (`.veron/captures/...`)**: Rust бэкенд вычисляет путь скриншота относительно `cwd` активной сессии/проекта с нормализованными прямыми слэшами (`.veron/captures/screenshot_*.png`).
-- **Автоматическая PTY stdin-вставка**: Относительный путь напрямую пишется в шелл PTY, и одновременно копируется в буфер обмена пользователя для мгновенной отправки AI-агенту.
-- **Интерактивная кнопка в шапке**: Клик по иконке скриншота в шапке панели считывает буфер через `navigator.clipboard.read()` и вставляет путь в 1 клик.
-- **Drag & Drop**: Поддержка перетаскивания файлов изображений прямо в окно терминала с автоматическим автосохранением и вставкой пути.
-- **Автообновление виджета скриншотов**: Сайдбар мгновенно обновляет счетчик и размер файлов после сохранения скриншота.
-
-### Milestone 7: Изоляция групп окон по Workspaces (До 6 терминалов в группе)
-- **Полная изоляция сессий**: Каждый Workspace — это независимая группа до 6 терминалов со своим персональным layout (1..6) и слотами. Переключение между воркспейсами полностью скрывает терминалы других групп и открывает терминалы выбранного воркспейса.
-- **Фоновые PTY-процессы**: Терминалы неактивных воркспейсов продолжают безопасно работать в бэкенде (Tokio/ConPTY); при переключении обратно кольцевой буфер 512 КБ мгновенно восстанавливает историю без потерь.
-- **Управление группами (CRUD)**: Добавлены API `POST /api/workspaces`, `DELETE /api/workspaces/:id`, `PATCH /api/workspaces/:id`.
-- **UI создания и переключения**: Модальное окно `CreateWorkspaceModal` (с указанием стартовой рабочей директории и оболочки), переключатель групп в TopBar и полнофункциональный список с переименованием и удалением в Sidebar.
-- **Лимит 6 окон**: Строгий учет лимита (до 6 сессий на один экран) с визуальным счетчиком `X/6` и блокировкой избыточного спавна.
-
-### Milestone 8: Интеграция Antigravity Workspaces (Автозапуск agy и векторный SVG)
-- **Выбор типа Workspace**: При нажатии `+` отображаются карточки выбора: **Antigravity (AI Agent)** или **Terminal (Shell)**.
-- **Автоматический запуск `agy`**: При создании воркспейса Antigravity рабочая папка выставляется в `veron`, сессия автоматически получает команду `agy\r`, стартуя AI агента сразу без ручного ввода.
-- **AGY по умолчанию для новых терминалов**: Любые новые терминалы, добавляемые в группу Antigravity (кнопка `+`, сплит или TopBar `+ New AGY`), автоматически запускаются с `agy\r`.
-- **Векторная SVG иконка Antigravity**: Извлечен и векторизован оригинальный логотип Antigravity (`AntigravityIcon.tsx` с градиентным режимом), отображается в сайдбаре, топ-баре и сессиях.
-
-### Milestone 9: Безупречный буфер обмена, умный Ctrl+C/Ctrl+Enter и Hot Binary Swap
-- **Универсальная вставка текста (`Ctrl+V` и `Win+V`)**: В `handleNativePaste` и `handleWindowPaste` добавлено прямое считывание и передача текстового буфера через WebSocket (`ws.send({ type: 'input', data: text })`), гарантируя мгновенную вставку как обычного текста, так и элементов из системного меню истории буфера Windows (`Win+V`).
-- **Многострочный перенос (`Ctrl+Enter` / `Shift+Enter`)**: Через `term.attachCustomKeyEventHandler` перехвачен `Enter` с `ctrlKey`/`shiftKey` — отправляется символ переноса строки `\n` (Line Feed) вместо `\r` (Carriage Return). В CLI-агентах (таких как `agy` и Claude Code) текст корректно переносится на новую строку без преждевременной отправки сообщения.
-- **Умное копирование (`Ctrl+C` / `Ctrl+Shift+C`)**: При наличии выделенного текста в терминале нажатие `Ctrl+C` или `Ctrl+Shift+C` копирует текст в буфер обмена (`navigator.clipboard.writeText`) без прерывания запущенного процесса (без отправки `SIGINT`). Если текст не выделен — стандартный `SIGINT` проходит беспрепятственно.
-- **Non-Destructive Hot Binary Swap**: Устранена проблема краша клиента при пересборке. Запрещено убийство процессов `veron`. При обновлении бинарника задействован механизм безопасного перемещения заблокированного файла (`Move-Item veron.exe veron.old.exe`), что позволяет запущенному клиенту продолжать работу без сбоев.
-
-### Milestone 10: Настраиваемое стартовое количество окон (1..6) при создании воркспейса
-- **Сетка выбора от 1 до 6 окон**: В модальное окно создания группы (`CreateWorkspaceModal`) добавлен интерактивный сегментированный селектор количества начальных окон (1 — Single, 2 — 2 Columns, 3 — 1 Left + 2 Stacked, 4 — 2x2 Grid, 5 — 2 Top + 3 Bottom, 6 — 2x3 Grid).
-- **Поддержка всех типов воркспейсов**: Работает как для обычных терминалов (запускает выбранный Shell), так и для Antigravity (автоматически спавнит N сессий с именами `Antigravity 1..N` и инъекцией `agy\r`).
-- **Мгновенная раскладка (Grid Placement)**: Сразу после создания все N окон размещаются в слоты воркспейса, а layout переключается в соответствующий режим без лишних ручных кликов.
-
-### Milestone 11: Устранение лишнего окна терминала на Windows (`windows_subsystem = "windows"`)
-- **Бесшумный запуск GUI**: В `src-tauri/src/main.rs` раскомментирован и включен атрибут `#![windows_subsystem = "windows"]`. Теперь при обычном запуске `veron.exe` (даблклик, ярлык, автозагрузка) операционная система открывает исключительно красивое нативное десктопное окно Veron без раздражающего черного консольного окна `cmd`/`conhost` на панели задач.
-### Milestone 12: Интеллектуальный выбор LAN IP для Phone Remote и консолидация UI (Settings Modal)
-- **Умная приоритизация LAN IP (`get_network_interfaces` & `score_ip`)**:
-  - `portable-pty` и сетевой стек переведены на перечисление реальных сетевых интерфейсов через `list_afinet_netifas`.
-  - Реализован скоринг: исключены виртуальные/прокси адаптеры (`happ-xray`, WSL, Hyper-V, Docker, VPN/TAP/TUN), а физические адаптеры Wi-Fi / Ethernet (`192.168.x.x`, `10.x.x.x`) получают наивысший приоритет (+1000 очков). В локальной сети Veron автоматически выбирает реальный адрес (например, `192.168.4.39`).
-- **Интерактивный `RemoteModal`**:
-  - Добавлен селектор всех доступных интерфейсов хоста.
-  - Добавлена возможность ручного ввода любого IP-адреса с автогенерацией QR-кода на лету и сохранением в `localStorage`.
-- **Консолидация Phone Remote в UI**:
-  - Убрана дублирующаяся кнопка Phone Remote из сайдбара (как в свернутом, так и в развернутом виде).
-  - Сохранена единственная, эргономичная кнопка *Phone Remote* в верхнем хедере (`TopBar`).
-- **Централизованное окно настроек (`SettingsModal`)**:
-  - Из сайдбара удалены разрозненные кнопки выбора темы и виджет `captures`.
-  - Внизу бокового меню размещена единая кнопка *Settings*.
-  - В модальном окне настроек сгруппированы: выбор цветовой темы (Dark Cybran Obsidian / Light Day), управление снимками экрана (количество, объем, открытие папки в Explorer, очистка), сетевая сводка и Auth PIN с возможностью быстрого копирования.
-
-### Milestone 13: Режим AGY (нативный буфер без дублирования пути) и умное разделение пробелами
-- **Нативная синергия с AGY CLI 1.2+**:
-  - При `Ctrl+V` в терминале с `agy cli 1.2` агент сам считывает изображение из системного буфера Windows через ConPTY key event и прикрепляет его как нативный медиа-аттач (`📎 1 media attached`).
-  - В Veron добавлен режим **AGY Mode** (включен по умолчанию). В этом режиме Veron архивирует файл в `.veron/captures/` и показывает тост, но глушит инъекцию текстового пути в stdin терминала и не затирает системный буфер строкой пути. В результате поле ввода AGY остается чистым без дублирования.
-- **Интерактивный переключатель AGY / Direct Path**:
-  - В шапку каждого терминала (`TerminalPane`) добавлен компактный янтарный переключатель `[● AGY]` / `[○ Path]`. Позволяет в 1 клик переключиться между AGY-режимом и Direct Path режимом (для локальных моделей, скриптов, bash).
-  - В главное окно настроек (`SettingsModal`) добавлена секция *AI Agent & Image Paste Mode* с выбором режима. Выбор сохраняется в `localStorage` (`veron_agy_mode`).
-- **Устранение склейки слов (Space Padding Fix)**:
-  - В бэкенде Rust (`save_image_and_paste` и `save_images_batch_and_paste`) пути форматируются с гарантированными пробелами (`format!(" {} ", path)`), предотвращая склейку пути с текстом перед курсором (`cli.veron/...` -> `cli .veron/...`).
-- **Кнопка "Input images"**:
-  - Пакетная загрузка изображений из Проводника Windows всегда аккуратно вставляет относительные пути через пробел, сохраняя киллер-фичу для быстрого добавления нескольких файлов.
-
-### Milestone 14: Изоляция Git Worktree, плашка Live Git Diff (+/- строк) и Auto Port Detection
-- **Git Worktree Workspaces (`src-tauri/src/git.rs`)**:
-  - В модальном окне `CreateWorkspaceModal` добавлена карточка *Git Worktree Isolation*.
-  - При включении создается изолированная ветка и директория в `.veron/worktrees/<branch>`.
-  - Автоматически прописывается `.veron/worktrees/` в `.gitignore`.
-  - Сессии и AI-агенты (`agy`, Claude CLI) запускаются прямо в изолированном worktree. Основная ветка репозитория защищена от случайных перезаписей.
-  - При удалении воркспейса вызывается `git worktree remove --force` с очисткой временной папки.
-- **Live Git Diff Pill & Modal (`src/components/GitDiffPill.tsx`, `GitDiffModal.tsx`)**:
-  - В верхнем баре (`TopBar`) отображается компактная плашка с текущей веткой и подсчетом строк: `[ branch  +42 -12]` (зеленый `+`, красный `-`).
-  - При чистом репозитории отображается аккуратный бейдж `[ branch clean]`.
-  - Клик по плашке открывает полнофункциональный инспекционный Diff-модал: список измененных файлов со статусами (`M`, `A`, `D`, `?`), синтаксическая подсветка unified diff (зеленые добавления, красные удаления), фильтрация по файлам и кнопка «Copy Diff».
-- **Auto Port Detection (`src-tauri/src/ports.rs`, `PortIndicator.tsx`)**:
-  - Нативный сканер на базе `CreateToolhelp32Snapshot` и быстрого `netstat -ano` (11 мс): находит дерево дочерних процессов ConPTY (Node, Vite, Next.js, Python, Cargo).
-  - Определяет реальные открытые TCP-порты для активного воркспейса (фильтруя системные службы Windows и порт Veron 4567).
-  - В `TopBar` автоматически зажигается пульсирующий индикатор `[● :5173 ↗]`.
-  - Клик в 1 клик открывает dev-сервер в системном браузере (`POST /api/open-url`).
-  - При нескольких запущенных серверах открывается выпадающий список для быстрого перехода.
-
-### Milestone 15: Модульная диагностика, аудит безопасности и Zero-Clippy Polish
-- **Устранение утечки Auth Token в `/api/system`**:
-  - `GET /api/system` теперь проверяет `is_authorized`. Для неавторизованных внешних запросов по LAN токен возвращается пустым `""`, а `lan_url` не раскрывает секрет.
-  - На неавторизованных устройствах (телефон, ноутбук в Wi-Fi) интерфейс бесшовно запрашивает PIN-код с экрана ПК, исключая несанкционированный захват терминала.
-- **Устранение ложных срабатываний детектора портов**:
-  - В `ports.rs` добавлен строгий ранний выход: если в воркспейсе нет активных процессов (`session_root_pids.is_empty()`), возвращается пустой список, предотвращая отображение чужих портов ОС.
-- **Безопасность путей Git Worktree**:
-  - Усилена санитизация имен веток в `create_git_worktree` (исключение спецсимволов `^`, `~`, `:`, `?`, `*`).
-  - В `remove_git_worktree` внедрена каноническая проверка пути: папка удаляется только если она строго лежит внутри `.veron/worktrees/`.
-- **Zero-Clippy & Clean Code Invariant**:
-  - Устранены все предупреждения линтера `cargo clippy`: переход на `sort_by_key`, идиоматичный `strip_prefix`, схлопывание `if`.
-  - Все 12 модульных тестов Rust и сборка TypeScript/Vite проходят со статусом 100% OK.
-  - Релизный бинарник `veron.exe` (3.7 МБ) пересобран и обновлен через безопасный NTFS Hot Swap.
-
-### Milestone 16: Hands-On Frontend UI/UX Polish, AGY Slot Architecture & Modal Ergonomics
-- **Hands-On UI тестирование через Chrome DevTools**:
-  - Живое тестирование интерфейса (`localhost:4567`) через инструмент `chrome-devtools`: полноэкранные снапшоты, инспекция 1-, 2-, 3-, 4-оконных сеток, модалок, скриптов, мобильного режима и темы.
-- **Безопасность быстрых команд (Quick Scripts)**:
-  - Удален опасный скрипт `Kill Port 4567 Process`, который при нажатии `Enter` убивал сам сервер Veron вместе с открытыми терминалами.
-  - Заменен на безопасный `Clear Screen / Reset Terminal` (`Clear-Host`).
-- **Эргономика модальных окон (Escape Key & Backdrop Dismissal)**:
-  - Во все 4 модальных окна (`SettingsModal`, `CreateWorkspaceModal`, `GitDiffModal`, `RemoteModal`) добавлены слушатели клавиши `Escape` и клика вне диалога (backdrop click). Протестировано и верифицировано в runtime через синтетические события DevTools.
-- **Интеграция Antigravity в пустые слоты (Empty AGY Slots)**:
-  - В воркспейсах Antigravity пустые квадранты сетки теперь выводят специализированный брендинг: янтарную эмблему Antigravity, статус `Empty AGY Slot` и кнопку `+ Launch AGY`, автоматически стартующую сессию с запуском агента `agy`.
-- **Ликвидация обрезки текста в сайдбаре (Sidebar Layout Resilience)**:
-  - Кнопки переименования и удаления групп воркспейсов переведены с `opacity-0` на `hidden group-hover:block`. За счет высвобождения зарезервированного пространства название воркспейса `Antigravity` отображается полностью без усечения `Antigra...`.
-- **Адаптивность заголовка терминальных панелей**:
-  - Имя сессии переведено на `truncate min-w-0 flex-shrink`.
-  - Кнопка текущей рабочей директории скрывается на компактных квадрантах (`hidden md:flex max-w-[140px]`), предотвращая наползание контролов в сетках из 3–6 окон.
-  - Метка `Input images` переведена на `hidden 2xl:inline`.
-- **Визуальная гармонизация TopBar**:
-  - Кнопка переключения темы приведена к единому стилю смежных элементов тулбара (`border border-white/[0.06] bg-white/[0.04] p-1.5 rounded-md hover:bg-white/[0.08]`).
-- **Фильтрация внутренних sidecar-портов AGY**:
-  - В `ports.rs` добавлен фильтр портов `3500..=3510` и процессов `agy.exe`/`antigravity`, исключая ложное отображение служебных RPC как веб-серверов в шапке.
-
-### Milestone 17: Восстановление Ctrl+V (любая раскладка + User Gesture) и фикс стрелочек ConPTY/xterm
-- **Безупречная вставка текста на любой раскладке (`Ctrl+V` / `Win+V`)**:
-  - Устранена потеря *transient user gesture*: `navigator.clipboard.readText()` теперь вызывается синхронно и мгновенно внутри обработчика нажатия клавиши (`term.attachCustomKeyEventHandler`), без задержек в `setTimeout`.
-  - Добавлена проверка скан-кода клавиши `event.code === 'KeyV'` и `KeyC` — копирование и вставка текста работают надежно как на английской, так и на русской раскладке клавиатуры (где `key` равен `'м'` / `'с'`).
-  - Синхронизирована логика для `TerminalPane.tsx` и `MobileView.tsx`.
-- **Устранение бага со стрелочками (`↑`, `↓`, `←`, `→`)**:
-  - **Автофокус xterm**: Устранена проблема потери фокуса при клике по панели, смене вкладок или закрытии модалок (`term.focus()`), из-за чего клавиши стрелок скроллили контейнер вместо отправки ANSI VT-кодов в shell.
-  - **Windows ConPTY & PowerShell VT Mode**: В `TerminalPane.tsx` передана опция `windowsPty: { backend: 'conpty' }`, а в `pty.rs` для сессий PowerShell добавлена переменная окружения `PSREADLINE_VTINPUT=1`, исключающая вывод мусорных символов `A, B, C, D` модулем PSReadLine.
-  - Релизный бинарник `veron.exe` пересобран и обновлен через безопасный Hot Swap.
-
-### Milestone 18: Системный аудит, устранение критического Path Traversal и стабилизация Concurrency
-- **Ликвидация Path Traversal в `static_file_handler` (`src-tauri/src/server.rs`)**:
-  - Внедрена строгая валидация компонентов пути: любые попытки выхода через `..`, `RootDir` или Windows-префиксы дисков мгновенно отклоняются со статусом `403 Forbidden`.
-  - Добавлена каноническая проверка `canon_target.starts_with(&canon_root)`, исключающая выход за пределы директории `dist/`.
-  - Добавлен автоматический модульный тест `test_static_file_handler_blocks_path_traversal`.
-- **Ликвидация обрыва сессий и замерзания скроллбэка (`tokio::sync::broadcast::RecvError::Lagged`)**:
-  - В `server.rs` (`send_task`) и `session.rs` (фоновый сборщик истории сессий) применен `loop` с явным перехватом `RecvError::Lagged(missed)` с логированием и продолжением цикла. Терминалы больше не отваливаются при резком выводе сотен килобайт данных (`find`, `cat`, `cargo build`).
-- **Безопасное открытие URL через Win32 `ShellExecuteW` (`src-tauri/src/ports.rs`)**:
-  - Устранен вызов `cmd.exe /C start ""` с риском инъекции и поломки URL, содержащих `&` и параметры запросов.
-  - Добавлена строгая проверка схемы (`http://` и `https://` only) и вызов Win32 `ShellExecuteW` без запуска лишних шелл-процессов.
-  - Добавлен тест `test_open_browser_url_rejects_unsafe_schemes`.
-- **Оптимизация блокировок (`src-tauri/src/session.rs`)**:
-  - В `close_session` и `close_all` освобождение блокировки `sessions.write()` теперь происходит ДО синхронного вызова `taskkill`, устраняя микрофризы остальных терминалов.
-- **Ограничение размеров PTY (`src-tauri/src/pty.rs`)**:
-  - Добавлен `clamp(5, 500)` на строки и `clamp(10, 1000)` на колонки для защиты буфера ConPTY.
-- **Инициализация Tracing и гигиена кода**:
-  - В `main.rs` инициализирован `tracing_subscriber::fmt` с фильтром по умолчанию `info`.
-  - Удалена неиспользуемая зависимость `dirs = "5.0"` из `Cargo.toml`.
-  - Все 14 модульных тестов Rust проходят (100% OK), линтер Clippy выдает 0 предупреждений.
-
-### Milestone 19: Win32 ExtendedTcpTable, Batch Git, Workspaces Persistence, Visual Bell, Navigation Hotkeys, AGY Prompt Detector & Daemon Mode
-- **1.1: Win32 `GetExtendedTcpTable` (Zero-Subprocess Network Port Scanner)**:
-  - Полностью заменен спавн дочернего процесса `netstat -ano` в `src-tauri/src/ports.rs` на прямой вызов Win32 `GetExtendedTcpTable` для IPv4 (`AF_INET`) и IPv6 (`AF_INET6`) с флагом `TCP_TABLE_OWNER_PID_LISTENER`.
-  - Считывание сетевых портов и сопоставление с PID теперь происходит полностью in-memory без форка процессов, снижая CPU overhead до нуля.
-  - Добавлен модульный тест `test_get_listening_tcp_ports_win32`.
-- **1.2: Batched Git Status (`src-tauri/src/git.rs`)**:
-  - Сокращены вызовы CLI `git` с 5 до 1-2 за цикл: используется `git status --porcelain=v1 -b` и единичный `git diff HEAD --numstat`.
-  - Существенно снижена нагрузка на файловую систему и процессор при фоновом поллинге репозитория.
-- **1.3: Персистентность рабочих пространств на диске (`.veron/workspaces.json`)**:
-  - В `src-tauri/src/session.rs` реализовано автоматическое сохранение и загрузка списка рабочих пространств в `.veron/workspaces.json` при добавлении, удалении и переименовании пространств.
-  - Добавлен модульный тест `test_workspace_persistence`.
-- **2.2: Visual Bell & Индикатор завершения задач (`src/components/TerminalPane.tsx`)**:
-  - Реализован перехват события `term.onBell()`, активирующий мягкое янтарное свечение контура терминала (`ring-2 ring-amber-400/90 shadow-[0_0_25px_rgba(245,158,11,0.5)]`).
-- **2.3: Клавиатурная навигация без мыши (`src/App.tsx` и `TerminalPane.tsx`)**:
-  - `Alt + 1..6`: переключение фокуса активного квадранта / слота с автоматическим переводом фокуса курсора xterm (`termRef.current?.focus()`).
-  - `Alt + M`: разворачивание активной панели на весь экран / возврат к сетке.
-  - `Alt + W`: быстрое закрытие сессии в активном слоте.
-  - Сохранен глобальный вызов Quick Scripts по `Ctrl+K` / `Cmd+K`.
-- **3.2: Детектор состояния AI-агента "Needs Input" (`src/components/TerminalPane.tsx`)**:
-  - Реализован мониторинг буфера терминала в пространствах Antigravity: при ожидании ввода пользователя отображается пульсирующий бейдж `[● Needs Input]` в заголовке панели.
-- **4.2: Фоновый Daemon / Headless режим & CLI параметры (`src-tauri/src/main.rs`)**:
-  - Добавлена поддержка параметров командной строки `--daemon`, `-d`, `--headless`, `--server-only`, `--no-gui`.
-  - Добавлена поддержка флагов `--port <PORT>` / `-p <PORT>`, `--token <TOKEN>` / `-t <TOKEN>` (и переменной окружения `VERON_TOKEN`), а также флага справки `--help` / `-h`.
-- **Верификация**:
-  - Все 16 модульных тестов Rust успешно пройдены (`16 passed; 0 failed`).
-  - Линтер Clippy: 0 предупреждений.
-  - Сборка фронтенда Vite + TypeScript: 0 ошибок (`npm run build`).
-  - Релизный бинарник `veron.exe` собран и обновлен.
-
-### Milestone 20: 4-уровневая отказоустойчивая интеграция с глобальным буфером обмена Windows
-- **Прямой доступ к Win32 Clipboard API (`src-tauri/src/clipboard.rs`)**:
-  - Реализованы нативные функции `set_clipboard` и `get_clipboard` с прямым обращением к Win32 API (`OpenClipboard`, `EmptyClipboard`, `SetClipboardData(CF_UNICODETEXT, ...)`, `GetClipboardData`) без внешних тяжелых зависимостей.
-  - Добавлены REST-эндпоинты `POST /api/clipboard` и `GET /api/clipboard` с Bearer-авторизацией.
-  - Добавлен автоматический модульный тест `test_clipboard_roundtrip`.
-- **4-уровневая цепочка сохранения в буфер (`src/services/api.ts`)**:
-  - `copyToGlobalClipboard`: Уровень 1 — нативный `e.clipboardData.setData`, Уровень 2 — `navigator.clipboard.writeText`, Уровень 3 — `document.execCommand('copy')` через скрытый `textarea`, Уровень 4 — бэкенд `/api/clipboard` напрямую в ядро Windows.
-  - `readFromGlobalClipboard`: `navigator.clipboard.readText` с автоматическим фолбэком на `GET /api/clipboard`.
-- **Устранение бага с потерей скопированного текста в терминале (`TerminalPane.tsx`)**:
-  - Ликвидирована гонка с преждевременным сбросом выделения при `Ctrl+C`, приводившая к невозможности скопировать текст в WebView2 и случайному закрытию процессов при повторном нажатии.
-  - Добавлен слушатель нативного браузерного события `copy` на контейнере терминала.
-  - **Copy-on-Select**: автоматическое бесшумное копирование выделенного текста в буфер Windows при отпускании мыши (`mouseup`).
-  - **PowerShell/CMD Enter-to-Copy**: нажатие `Enter` при активном выделении копирует текст в глобальный буфер и снимает выделение.
-  - Интеграция `copyToGlobalClipboard` в модальные окна `SettingsModal`, `RemoteModal`, `GitDiffModal` и `MobileView`.
-- **Верификация**:
-  - Все 17 модульных тестов Rust успешно пройдены (`17 passed; 0 failed`).
-  - Сборка фронтенда Vite + TypeScript: 0 ошибок (`npm run build`).
-  - Релизный бинарник `veron.exe` пересобран и обновлен.
-
-### Milestone 21: Генеральная уборка репозитория и структуризация ассетов
-- **Структуризация медиа-ассетов (`docs/screenshots/`, `docs/references/`)**:
-  - 10 скриншотов Veron перемещены из корня проекта в каталог `docs/screenshots/` с сохранением полной Git-истории (`git mv`).
-  - Референсные скриншоты (`thorium_...`, `warp_...`) перемещены в `docs/references/`.
-  - Удален дубликат `icon.png` из корня (полная копия `src/assets/antigravity.png`).
-- **Интеграция официального векторного фавикона (`public/veron-icon.svg`)**:
-  - Создана директория `public/` с векторным SVG-логотипом Veron в строгом стиле Cybran Amber (`#f59e0b` / `#090a0d`), устраняющим ошибку 404 на `/veron-icon.svg` в браузере и WebView2.
-- **Очистка временных файлов и устаревших зависимостей**:
-  - Удален устаревший бинарник `veron.old.exe` (5.1 МБ).
-  - Очищены тестовые временные скриншоты в `.veron/captures/` (~25 МБ) с сохранением `.gitkeep`.
-  - Удален неиспользуемый пакет `@tauri-apps/cli` из `devDependencies` `package.json`, облегчив дерево зависимостей.
-- **Обогащение документации (`README.md`, `GEMINI.md`)**:
-  - В `README.md` интегрированы демонстрационные скриншоты (3-панельная сетка, активный терминал, мобильный Phone Remote QR и Couch Mode).
-  - В `GEMINI.md` обновлена актуальная карта файловой структуры проекта.
-- **Верификация**:
-  - `cargo test --manifest-path src-tauri/Cargo.toml`: 17 passed, 0 failed.
-  - `npm run build`: чистая сборка TypeScript + Vite за 1.8с.
-  - Проверено сохранение работы запущенного экземпляра `veron.exe`.
-
-### Milestone 22: Self-Improve Loop: Ring Buffer O(1), Auto-Reconnect WS, Debounced Resize, Ctrl+Shift+T Split & Bundle Splitting
-- **Кольцевой буфер истории сессий O(1) (`VecDeque<u8>`)**:
-  - В `src-tauri/src/session.rs` история терминала переведена с `Vec<u8>` на `std::collections::VecDeque<u8>`.
-  - Устранено тяжелое копирование памяти (`memmove` до 512 КБ на каждый PTY-чанк) при переполнении буфера — отсечение устаревших байтов через `drain(0..trim)` теперь работает за амортизированное $O(1)$ без смещения массива.
-  - Добавлен модульный тест `test_history_ring_buffer_bounded_size`.
-- **WebSocket Keepalive Heartbeat & Защита от зависших соединений**:
-  - В `src-tauri/src/server.rs` (`handle_terminal_socket`) добавлен 25-секундный таймер `tokio::time::interval`, отправляющий ping-фреймы в клиентский WebSocket.
-  - При обрыве соединения на телефоне или засыпании устройства задача передачи мгновенно завершается, предотвращая накопление брошенных broadcast-подписчиков.
-- **Отказоустойчивый Auto-Reconnect WebSocket на клиенте**:
-  - В `TerminalPane.tsx` и `MobileView.tsx` внедрен механизм переподключения с экспоненциальной задержкой (от 1 до 8 секунд) при аварийном разрыве соединения (`event.code !== 1000`).
-  - Добавлены слушатели событий `window.addEventListener('online')` и `document.addEventListener('visibilitychange')`: при возвращении на вкладку или разблокировке смартфона WebSocket переподключается мгновенно без необходимости обновлять страницу вручную.
-  - Перед воспроизведением истории терминала вызывается `term.reset()`, исключая дублирование экрана.
-- **Дебаунсинг ресайза ConPTY (`ResizeObserver`)**:
-  - Запросы на изменение геометрии ConPTY (`ws.send({ type: 'resize' })`) дебаунсированы с задержкой 60–80 мс, исключая фризы и спам ConPTY-буфера Windows при плавной анимации окон и изменении размеров.
-  - Устранен дублирующийся `useEffect` автофокуса в `TerminalPane.tsx`.
-- **Моментальный сплит текущей панели (`Ctrl+Shift+T` / `Ctrl+Shift+D`)**:
-  - Перехвачены комбинации `Ctrl+Shift+T` и `Ctrl+Shift+D` на любой раскладке клавиатуры, мгновенно добавляющие новый терминал в текущий воркспейс и адаптирующие сетку.
-  - В модальное окно настроек (`SettingsModal.tsx`) добавлен интерактивный раздел со списком горячих клавиш.
-- **Синтетический Unified Diff для новых файлов (`src-tauri/src/git.rs`)**:
-  - Добавлена ранняя проверка существования пути `!path.exists()` в `get_git_status`.
-  - В `get_git_diff` реализована генерация валидного unified diff для неотслеживаемых (untracked `?`) файлов, позволяя инспектировать новые файлы прямо в `GitDiffModal`.
-  - Добавлен модульный тест `test_git_diff`.
-- **Оптимизация бандла Vite (`vite.config.ts`)**:
-  - Настроено разделение чанков через `manualChunks`: вынесены `xterm` (`@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-webgl`) и `vendor` (`react`, `react-dom`, `lucide-react`).
-  - Размер основного бандла приложения уменьшился с 695 КБ до 144 КБ, полностью устранено предупреждение Vite об оверсайзе.
-- **Верификация**:
-  - `cargo test --manifest-path src-tauri/Cargo.toml`: 19 passed, 0 failed.
-  - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings.
-  - `npm run build`: чистая сборка TypeScript + Vite за 1.8с без варнингов.
-
-### Milestone 23: Современная кинематика интерфейса: Apple-grade плавность, морфинг сайдбара и микро-взаимодействия
-- **Дизайн-токены анимаций и кинематические кривые (`tailwind.config.js`, `src/index.css`)**:
-  - Внедрены кастомные кубические кривые Безье: `ease-apple` (`cubic-bezier(0.16, 1, 0.3, 1)`) и пружинная `ease-spring` (`cubic-bezier(0.34, 1.56, 0.64, 1)`).
-  - Настроены GPU-ускоренные кейфреймы без внешних тяжелых библиотек:
-    - `dialog-in`: плавное масштабирование модальных окон с `scale(0.96)` до `scale(1)` с микро-подъемом (`translateY(-4px)`).
-    - `overlay-in`: мягкое затемнение и нарастание `backdrop-blur-md` (0.24s).
-    - `dropdown-in`: аккуратный разворот выпадающих списков из точки привязки (`origin-top-left` / `origin-top-right`).
-    - `toast-slide`: появление уведомлений с мягким выездом снизу (`translateY(12px) -> translateY(0)`).
-  - Добавлен тактильный класс `.press-scale` (`active:scale-[0.97]` с `ease-apple`), придающий кликам по кнопкам, бейджам и табам отзывчивый «физический» отклик уровня macOS/Linear.
-- **Бесшовный морфинг сайдбара без перемонтирования DOM (`Sidebar.tsx`)**:
-  - Устранена первопричина топорного переключения — полное удаление и создание заново DOM-дерева сайдбара.
-  - Сайдбар переведен на единый анимированный контейнер с плавной интерполяцией ширины `transition-[width] duration-300 ease-apple` (`w-64` <-> `w-14`).
-  - Заголовок, поисковая строка сессий, список воркспейсов и нижние тулзы плавно затухают и сворачиваются (`opacity-100` / `opacity-0` + `pointer-events-none`) без рывков контента.
-- **Плавные модальные окна с размытием (`SettingsModal`, `QuickScriptsModal`, `CreateWorkspaceModal`, `RemoteModal`, `GitDiffModal`)**:
-  - Все модалки оснащены аппаратным ускорением, оверлеем `animate-overlay-in` с матовым блюром (`backdrop-blur-md bg-black/70`) и центрированным контейнером `animate-dialog-in`.
-  - Кнопки выбора категорий, сохранения настроек и действий в diff получили тактильный отклик `.press-scale`.
-- **Эргономика селектора сеток и шапки (`TopBar.tsx`)**:
-  - Сегментированный переключатель сеток (1–6) переведен на мягкий транзишн активного состояния (`transition-all duration-200 ease-apple press-scale`).
-  - Выпадающие списки выбора воркспейсов и запуска шеллов анимированы через `animate-dropdown-in` с привязкой к своим кнопкам вызова.
-  - Кнопки тулбара (Quick Scripts, Phone Remote, Theme Toggle) получили тактильную реакцию на нажатие.
-- **Плавная сетка терминалов и фокус (`TerminalPane.tsx`, `App.tsx`)**:
-  - Обертка терминала получила плавный переход рамок, колец фокуса и теней (`transition-all duration-300 ease-apple`).
-  - Сетка окон в `renderGridLayout()` адаптируется плавно при смене раскладки 1–6 без скачков.
-  - Пустые слоты (включая Empty AGY Slot) оформлены мягким градиентным бордером с ховером `hover:border-amber-400/30 hover:bg-[#0d0e13]/80`.
-  - Всплывающие тосты переведены на `animate-toast-in`.
-- **Верификация**:
-  - `npm run build`: чистая сборка TypeScript + Vite (2.96с).
-  - `cargo test --manifest-path src-tauri/Cargo.toml`: 19 passed, 0 failed.
-  - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings.
-
-### Milestone 24: Устранение дублирования экранов, динамический ресайз терминалов (1–6), Drag-and-Drop окон и Cybran Energy Sphere Loader
-- **Устранение бага зеркального дублирования сессий (Root Cause Fix)**:
-  - **Первопричина**: В `syncWorkspaceSlots` при освобождении слота 0 происходило слепое присвоение `existingSlots[0] = wsSessions[0].id` без проверки, что эта же сессия уже назначена в слот 1. В результате оба окна подключались к одному и тому же WebSocket ConPTY-сессии, зеркально дублируя ввод/вывод.
-  - **Исправление**: Внедрена строгая дедупликация через `seen = new Set<string>()`. Ни одна сессия не может быть привязана более чем к одному слоту.
-- **Умное компактирование и авто-сворачивание сетки при закрытии окна**:
-  - При закрытии терминала (`handleCloseSession`) оставшиеся сессии автоматически сдвигаются влево (слоты 0, 1, ...).
-  - Режим сетки автоматически адаптируется вниз: если было открыто 2 окна и 1 закрыто — приложение мгновенно и плавно переходит в режим 1 окна (или $N$ оставшихся), исключая появление мертвых/фантомных экранов.
-- **Интерактивное изменение ширины и высоты терминалов (`PaneSplitter.tsx`, `App.tsx`)**:
-  - Разработан компонент разделителя `PaneSplitter` с поддержкой вертикального и горизонтального ресайза, амбер-подсветкой и захватом курсора (`col-resize` / `row-resize`).
-  - Все раскладки (2, 3, 4, 5, 6 окон) получили динамические сплиттеры:
-    - Режим 2: горизонтальное соотношение колонок (15%..85%).
-    - Режим 3: сплиттер между левой колонкой и правой стопкой + сплиттер между правыми окнами.
-    - Режимы 4, 5, 6: независимые горизонтальные и вертикальные сплиттеры строк и колонок.
-  - Двойной клик по любому сплиттеру сбрасывает пропорции к ровным (50/50, 33/33/33). Пропорции сохраняются в `localStorage` по каждому воркспейсу.
-- **Плавный Drag-and-Drop окон с миниатюрой (Window Swapping)**:
-  - Хедер терминальной панели стал интерактивной зоной захвата (`cursor-grab` -> `cursor-grabbing`).
-  - При перетаскивании под курсором отображается парящая полупрозрачная карточка-миниатюра с названием сессии, AGY-бейджем и янтарным неоновым свечением.
-  - Целевой терминал подсвечивается янтарным кольцом и мягким скейлом (`data-slot-index`).
-  - При отпускании окна плавно меняются местами в сетке без разрыва PTY-процессов.
-- **Футуристичный лоадер запуска сессии (Cybran Amber Energy Sphere)**:
-  - При открытии нового терминала на 0.4 секунды запускается пульсирующая янтарная сфера энергии с расходящимися кольцами (`animate-ping`) и индикатором `INITIALIZING CONPTY SHELL...`.
-  - После инициализации лоадер плавно растворяется (`transition-opacity duration-300`), раскрывая готовый xterm-терминал.
-- **Универсальное меню быстрого добавления («+ Add» в TopBar)**:
-  - В шапке приложения размещена выделенная янтарная кнопка `+ Add` с выпадающим меню:
-    - Запуск любого установленного шелла (PowerShell, CMD, Git Bash, WSL).
-    - Запуск сессии AI-агента AGY.
-    - Быстрый сплит окна (`Ctrl+Shift+T`).
-    - Создание новой группы воркспейсов.
-- **Верификация**:
-  - `npm run build`: чистая сборка TypeScript + Vite (1.78с).
-  - `cargo test --manifest-path src-tauri/Cargo.toml`: 19 passed, 0 failed.
-  - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings.
-- **UI & Ergonomics Polish (Addendum)**:
-  - **Скрытие сплиттеров по умолчанию (`PaneSplitter.tsx`)**: Разделители теперь полностью невидимы (`opacity-0`) в нормальном состоянии и подсвечиваются мягким янтарным треком с граб-ручкой только при наведении мыши (`group-hover:opacity-100`) или во время перетаскивания.
-  - **Минимальные отступы между окнами (`renderPane`)**: Добавлен отступ `p-1` (4px) на обертку каждого квадранта сетки, создавая эстетичный зазор в 8px между соседними терминалами и позволяя окнам «дышать».
-  - **Четкая подсветка активного фокуса**: Обновлены стили активного терминала (`border-amber-400 ring-1 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.25)]` и подсвеченный хедер), а также добавлен `onMouseDown` для мгновенной фокусировки при клике в любой точке. Благодаря отступам фокусная линия видна непрерывно по всему периметру активного окна.
-
-### Milestone 25: Динамический движок тем оформления, 14 готовых пресетов, ручная калибровка цвета (HEX/Picker) и ликвидация хардкода amber-цветов
-- **Архитектура движка тем (`src/services/theme.ts`)**:
-  - Создана система типизированных тем `VeronTheme`, `XtermTheme` и конфигурации `ThemeSettings`.
-  - Включено 14 готовых дизайнерских тем:
-    - **10 Темных индустриальных палитр**: *Cybran Amber* (классика Supreme Commander), *Emerald Matrix* (кибер-зеленый), *Cobalt Cyan* (неоновый циан), *Amethyst Synth* (элегантный фиолетовый), *Crimson Void* (глубокий рубиновый), *Solar Gold* (яркое золото), *Velvet Rose* (розово-рубиновый), *Nordic Frost* (ледяной арктический), *Monokai Neon* (культовый лайм), *Titanium Slate* (монохромный холодный титан).
-    - **4 Светлых темы**: *Paper Amber*, *Paper Cobalt*, *Paper Emerald*, *Paper Minimal*.
-  - Внедрена математика динамических цветов: `hexToRgb`, `rgbToHex`, расчет контрастного текста (`getContrastForeground` для автоматического черного/белого шрифта на кнопках), затемнение/осветление и генератор кастомных тем `generateCustomTheme` для любого выбранного акцента.
-  - На лету обновляются CSS-переменные `:root` (`--veron-accent`, `--veron-accent-rgb`, `--veron-accent-hover`, `--veron-accent-fg`, `--veron-border-accent`, `--veron-glow`, `--veron-bg-canvas`, и др.).
-  - Настройки сохраняются в `localStorage` (`veron_theme_settings`) с обратной совместимостью с legacy-ключом `theme`.
-- **Ручная калибровка цвета (Manual Accent Color Tuning)**:
-  - В модальном окне настроек (`SettingsModal.tsx`) создана интерактивная панель ручной настройки:
-    - Нативный HTML5 Color Picker (`<input type="color">`) с мгновенным live preview.
-    - Текстовое поле ввода HEX (`#XXXXXX`) с валидацией и нормализацией.
-    - Быстрый выбор из 12 палитр (Amber, Emerald, Cyan, Sky, Indigo, Purple, Pink, Crimson, Gold, Lime, Slate, Orange).
-    - Кнопка «Сбросить до дефолта темы» для возврата к фирменному цвету пресета.
-    - Живой симулятор курсора терминала (`root@session:~$ █`) в реальном времени.
-- **Интеграция с Tailwind CSS 4 и альфа-прозрачностями**:
-  - `tailwind.config.js` настроен на поддержку CSS-переменных с альфа-каналом: `rgb(var(--veron-accent-rgb) / <alpha-value>)`.
-  - Все классы вида `bg-accent/10`, `border-accent/40`, `ring-accent/70`, `shadow-accent-glow` динамически меняют свой цвет и свечение при изменении темы и кастомного цвета.
-- **Бесшовное переключение тем xterm.js (Zero Terminal Interruption)**:
-  - В `TerminalPane.tsx` и `MobileView.tsx` изменение темы терминала отвязано от инициализации ConPTY и WebSockets. При смене темы или цвета xterm мгновенно перерисовывает буфер через `term.options.theme = activeTheme.xterm` без сброса командной строки и разрыва соединения.
-- **Полная ликвидация хардкода цветов (Amber Refactoring)**:
-  - Проанализированы и рефакторены все компоненты интерфейса: `App.tsx`, `TopBar.tsx`, `Sidebar.tsx`, `TerminalPane.tsx`, `SettingsModal.tsx`, `CreateWorkspaceModal.tsx`, `GitDiffModal.tsx`, `GitDiffPill.tsx`, `RemoteModal.tsx`, `MobileView.tsx`, `PaneSplitter.tsx`, `QuickScriptsModal.tsx`, `AntigravityIcon.tsx`.
-  - Все жестко зашитые классы `amber-400`, `amber-300`, `rgba(245, 158, 11, ...)` заменены на абстрактные токены `accent`, `var(--veron-accent)`, `var(--veron-border-accent)`, `var(--veron-glow)` и `var(--veron-accent-fg)`.
-- **Изоляция в ветке**:
-  - Разработка велась в изолированной ветке `feature/theme-palettes`, исключая конфликты с параллельными задачами второго агента.
-- **Верификация**:
-  - `npm run build`: чистая сборка TypeScript + Vite (1.94с).
-  - `cargo check --manifest-path src-tauri/Cargo.toml`: компиляция бэкенда без ошибок.
-
-### Milestone 26: Исправление механики сплиттеров (ликвидация эффекта «магнитного возврата»), абсолютные координаты курсора, дебаунс localStorage и надежный сброс двойным кликом
-- **Первопричина бага «магнитного отката» (Root Cause Analysis)**:
-  1. *Устаревшее замыкание (Stale Closure)*: в `PaneSplitter.tsx` обработчик `pointermove` регистрировался на `window` внутри `handlePointerDown` и удерживал колбэк `onResize`, замкнутый на начальное значение `colRatio` (например, 50%). На каждом движении мыши вычислялась дельта только одного кадра (+1px или ~0.1%) и прибавлялась к 50%, из-за чего значение оставалось `50 + 0.1 = 50.1%`, никогда не накапливалось дальше и «отмагничивалось» обратно при остановке курсора.
-  2. *CSS-конфликт анимаций*: на контейнерах сетки в `renderGridLayout` присутствовал класс `transition-all duration-300 ease-apple`, вызывавший 300-миллисекундную интерполяцию `width`/`height` и боровшийся с интерактивным перетаскиванием курсора.
-- **Архитектурное решение (Absolute Coordinate Geometry)**:
-  - **Абсолютный геометрический расчет в `PaneSplitter.tsx`**:
-    - При нажатии захватывается `parentEl.getBoundingClientRect()`.
-    - На каждое движение мыши процент вычисляется строго геометрически: `((clientX - rect.left) / rect.width) * 100` (для вертикального сплиттера) или `((clientY - rect.top) / rect.height) * 100` (для горизонтального).
-    - Колбэк и границы `minPercent`/`maxPercent` хранятся в `useRef`, исключая stale closures. Мышь и разделитель зафиксированы 1:1 в реальном времени с нулевым лагом.
-  - **Ликвидация transition-задержки**: Убран `transition-all duration-300 ease-apple` со всех контейнеров изменяемых размеров в `renderGridLayout()`. Изменение размеров происходит мгновенно на частоте 60/144 fps.
-  - **Полноэкранный прозрачный Drag Backdrop (`z-[9999]`)**:
-    - Во время активного драга монтируется невидимый оверлей, блокирующий перехват событий и мерцание курсора над холстами xterm (`cursor: text;`), а также исключающий выделение текста в терминалах при быстром движении мыши.
-  - **Мгновенный сброс по двойному клику/тапу**:
-    - Внедрено определение дельты времени между кликами (`now - lastClickTimeRef < 350ms`), надежно восстанавливающее пропорции (50/50, 33/33/33) без зависимости от синтетического события браузера `dblclick`.
-  - **Асинхронный дебаунс `localStorage` (60fps performance)**:
-    - Вызовы `localStorage.setItem('veron_layout_ratios', ...)` обернуты в таймер-дебаунс на 300 мс, исключая блокирующий синхронный дисковый ввод-вывод в процессе непрерывного драга.
-  - **Математика разделителей для 3-колоночных сеток (Mode 5 и Mode 6)**:
-    - Внедрена модель независимых разделителей (`div1` и `div2`): перемещение левого сплиттера не сдвигает правый сплиттер, а перемещение правого сохраняет левый неподвижным, обеспечивая поведение уровня VS Code и Chrome DevTools.
-- **Верификация**:
-  - `npm run build`: чистая сборка TypeScript + Vite за 1.75 с (ассеты обновлены в `./dist`).
-  - `cargo test --manifest-path src-tauri/Cargo.toml`: 19 из 19 тестов успешно пройдены.
-  - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings, 0 errors.
-
-### Milestone 27: Мгновенный переход по ссылкам из терминала в браузер ОС (Zero Confirm Popups & `@xterm/addon-web-links`)
-- **Первопричина бага (Root Cause Analysis)**:
-  1. *Модальное окно предупреждения `WARNING: This link could potentially be dangerous`*: при выводе ссылок агентами (OSC 8 последовательности) библиотека `xterm.js` при отсутствии опции `linkHandler` вызывала дефолтный `defaultActivate`, показывающий системный `confirm()`.
-  2. *Блокировка `window.open()` в WebView2*: после подтверждения вызывался `window.open()`, который в нативном окне WebView2 блокировался политиками безопасности или не имел связи с системным браузером Windows, приводя к полному бездействию.
-  3. *Недоступность обычных текстовых ссылок*: plain text URL (`https://...`) в логах и выводе команд не распознавались из-за отсутствия аддона веб-ссылок.
-- **Архитектурное решение**:
-  - **Прямой `linkHandler` в `TerminalPane.tsx` и `MobileView.tsx`**:
-    - В `new Terminal({...})` передана реализация `linkHandler.activate`, напрямую вызывающая `openBrowserUrl(uri)` без раздражающих диалоговых окон с предупреждениями.
-  - **Интеграция `@xterm/addon-web-links`**:
-    - Установлен и зарегистрирован аддон `@xterm/addon-web-links` (v0.11.0) для автоматического парсинга любых `http://` и `https://` ссылок в терминале с кликабельным переходом.
-  - **Двухуровневый шлюз открытия ссылок (`api.ts` + Win32 `ShellExecuteW`)**:
-    - Функция `openBrowserUrl` определяет контекст исполнения: для локального десктопного сеанса обращается к `/api/open-url` (где сервер вызывает нативный `ShellExecuteW`), а для удаленных мобильных клиентов открывает ссылку в новой вкладке мобильного браузера.
-  - **Системный перехват новых окон в `wry` (`main.rs`)**:
-    - В `WebViewBuilder` добавлен `.with_new_window_req_handler`, перехватывающий любые внешние вызовы создания окон и открывающий их через `ports::open_browser_url` с возвратом `NewWindowResponse::Deny`.
-- **Верификация**:
-  - `npm run build`: чистая сборка TypeScript + Vite (1.82с).
-  - `cargo test --manifest-path src-tauri/Cargo.toml`: все 19 тестов успешно пройдены.
-  - Релизный бинарник `veron.exe` обновлен через безопасный NTFS rename trick.
-
-### Milestone 28: Zero-Guesswork Absolute Screenshot Paths, Veron Cyber Synthesizer & Captures Retention
-- **Абсолютные нормализованные пути скриншотов (`src-tauri/src/session.rs`, `TerminalPane.tsx`)**:
-  - **Нормализация путей с прямыми слэшами**: `SavedCapture.file_path` принудительно нормализуется с прямыми слэшами (`C:/Users/.../.veron/captures/screenshot_....png`), исключая экранирование бэкслэшей в Windows и повреждение символов (`\U`, `\t`, `\n`).
-  - **Устранение 4 поисковых вызовов агентов**: При захвате скриншота в буфер обмена Windows копируется полный абсолютный путь. Внешние AI-агенты (в Antigravity, Claude Code, Cursor, Codex), запущенные в других рабочих папках или дисках, мгновенно открывают файл через `view_file` с 1-й попытки с нулевым оверхедом по поиску (экономия до ~2500 токенов и 10–20 секунд ожидания на каждом скриншоте).
-  - **Селектор формата путей (`SettingsModal.tsx`)**:
-    - `Absolute (Agent)`: `C:/.../screenshot.png` (по умолчанию, рекомендован для AI-агентов).
-    - `Relative Path`: `.veron/captures/...` (для локальной работы в терминале).
-    - `Markdown Link`: `![screenshot](file:///C:/...)` (для rich-preview в markdown-чатах).
-- **Синтезатор звука Veron Cyber Synthesizer (`src/services/sound.ts`)**:
-  - **Zero Audio Files**: Полностью процедурный синтезатор на базе нативного Web Audio API (`AudioContext`). Не требует скачивания тяжелых `.mp3`/`.wav` ассетов.
-  - **Фирменное звучание Cybran Amber**: Двухтоновый гармонический аккорд (ноты D5 587.33 Гц -> A5 880 Гц с треугольным обертоном D6 1174.66 Гц), экспоненциальной огибающей затухания и теплым низкочастотным фильтром на 3200 Гц. Звучит как утонченный Sci-Fi HUD интерфейс, а не стандартный назойливый «колокольчик» Windows.
-  - **Настройки звука в UI (`SettingsModal.tsx`)**:
-    - Переключатель вкл/выкл звука (`Volume2`/`VolumeX`).
-    - Ползунок громкости 0–100% с сохранением в `localStorage`.
-    - Кнопка предпрослушивания «Test Chime».
-- **Универсальный детектор завершения команд и работы AI-агентов (`TerminalPane.tsx`)**:
-  - **Распознавание завершения агентов**: Детектирует возврат к строке ожидания ввода для всех популярных CLI-агентов (`claude code` `❯`, `agy cli` `agy ›`, `codex cli` `>`, `aider`, вопросы подтверждения `[y/n]`, `select an option`).
-  - **Детектор долгих команд**: Если выполнение команды в шелле длилось дольше 2 секунд и завершилось возвратом в командную строку (`PS >`, `$`, `#`), автоматически проигрывается фирменный звук Veron.
-  - **Интеграция с Bell**: При получении управляющего символа `\a` (Bell) воспроизводится `playVeronChime()`.
-  - **Уведомления Windows**: Если вкладка или окно Veron свернуто (`document.visibilityState === 'hidden'`), отправляется системное уведомление о завершении задачи.
-  - **Защита от спама**: Встроен кулдаун 3 секунды между воспроизведениями звука на каждую сессию.
-- **Ротация и очистка скриншотов (`session.rs`, `server.rs`, `SettingsModal.tsx`)**:
-  - В бэкенд добавлен метод `cleanup_captures(older_than_days, max_total_mb)` и REST-эндпоинт `POST /api/captures/cleanup`.
-  - В модальное окно настроек добавлены кнопки быстрой очистки: «Clean > 7 Days» и «Clean > 30 Days».
-  - Отображение тоста с количеством удаленных файлов и освобожденным объемом диска.
-- **Верификация**:
-  - `cargo test --manifest-path src-tauri/Cargo.toml`: 20 из 20 тестов успешно пройдены (`20 passed; 0 failed`).
-  - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings, 0 errors.
-  - `npm run build`: чистая сборка TypeScript + Vite (1.87с).
-  - Релизный бинарник `veron.exe` (5.26 МБ) собран и обновлен через безопасный NTFS Hot Swap.
+1. **PowerShell Semicolon Invariant**: Never use `&&` in Windows PowerShell. Use `;` strictly (`npm run build; cargo test`).
+2. **Safe Binary Update (Zero Kill Invariant)**: Never `taskkill veron.exe` during dev! Axum hot-serves `./dist` on disk (`npm run build` + `F5`). To update the `.exe`, use NTFS rename:  
+   `Move-Item veron.exe veron.old.exe -Force; Copy-Item src-tauri\target\release\veron.exe .\veron.exe -Force`.
+3. **Recursive Process Teardown**: Closing sessions or window MUST call `PtyInstance::kill()` (`taskkill /PID <pid> /T /F`). Zero zombie node/python processes.
+4. **Tokio Context Invariant**: `SessionManager::create_session` must be called within an active Tokio reactor context.
+5. **No `ArtifactMetadata`**: When calling `write_to_file` on project files, never include `ArtifactMetadata`.
+6. **Zero-Guesswork Screenshot Paths**: Always copy normalized absolute paths (`C:/Users/.../screenshot.png` with `/`) to clipboard so external agents don't waste 4+ search tool calls.
+7. **Mandatory Git Commit**: Always commit verified fixes (`npm run build`, `cargo test`) before reporting back.
+8. **Anti-Bloat Documentation (< 120 Lines)**: Keep docs lean. No changelog blogs here. Use `git log --oneline` for history.
 
 ---
 
-## 5. Инварианты и правила для будущих сессий
+## 4. Active Roadmap (Next Tasks)
 
-1. **PowerShell-синтаксис в Windows**:
-   - Никогда не использовать `&&` для цепочки команд в PowerShell! Использовать строго `;` (например: `npm run build; cargo check`).
-2. **Встраивание ассетов (`rust-embed`)**:
-   - При сборке релиза `cargo build --release` **сначала ОБЯЗАТЕЛЬНО** должен быть запущен `npm run build`, чтобы в папке `dist/` лежали свежие файлы фронтенда.
-3. **Безопасность ConPTY**:
-   - Никогда не убивать процессы через обычный `child.kill()`, так как дочерние сервера (Node, Vite, Python) остаются в памяти. Только через `PtyInstance::kill()`, вызывающий `taskkill /T /F`.
-4. **Запрет на `ArtifactMetadata` в файлах проекта**:
-   - При создании файлов в проекте через `write_to_file` параметр `ArtifactMetadata` передавать ЗАПРЕЩЕНО (он только для brain-артефактов).
-5. **Дизайн-код**:
-   - Строгая палитра Cybran Yellow & Black (`#090a0d` / `#f59e0b`). Нулевая терпимость к неоновому AI-слопу, мигающим радужным кружкам и нерелевантным плашкам.
-6. **Safe Binary Update & Live Frontend Reload (Защита от краша сессий пользователя)**:
-   - Если пользователь работает прямо внутри Veron (например, запустил в нем терминал или агент `agy`), **КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО** убивать процесс `veron.exe` через `taskkill`, так как это уничтожит все живые ConPTY-сессии и рабочий процесс пользователя.
-   - **Для обновления UI**: Axum в `server.rs` автоматически проверяет `./dist` на диске перед fallback в `rust-embed`. Достаточно выполнить `npm run build`, и запущенный Veron сразу подхватит изменения при обновлении страницы (`Ctrl+R` / `F5`) без перезапуска бинарника.
-   - **Для замены бинарника `veron.exe` на Windows**: Windows NTFS разрешает переименование запущенного файла. Безопасная цепочка:
-     `Remove-Item .\veron.old.exe -Force -ErrorAction SilentlyContinue; Move-Item .\veron.exe .\veron.old.exe -Force; Copy-Item src-tauri\target\release\veron.exe .\veron.exe -Force`
-     При этом запущенный экземпляр продолжает работать без сбоев, а новый бинарник готов к следующему запуску.
-7. **Обязательный Git Commit при фиксах и решении проблем (Mandatory Commit Invariant)**:
-   - При успешном завершении задачи, устранении багов или проведении Self-Improve Loop после успешного прохождения всех тестов (`cargo test`, `npm run build`) агент **ОБЯЗАН немедленно зафиксировать изменения через `git add` и `git commit`** с содержательным сообщением по Conventional Commits (`feat:`, `fix:`, `refactor:`). Запрещено оставлять протестированный рабочий код незакоммиченным.
-
----
-
-## 6. Дорожная карта на будущее (Next Milestones)
-
-1. **Session Export / Logging**: экспорт буфера активной сессии в `.log` или `.txt` файл из контекстного меню.
-2. **Terminal Search / Find**: встроенная строка поиска по буферу терминала (`Ctrl+F`).
-
+1. **Session Export**: Export session history buffer to `.log` / `.txt` in 1 click.
+2. **Terminal Search (`Ctrl+F`)**: In-buffer regex & text search bar via `@xterm/addon-search`.

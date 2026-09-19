@@ -95,6 +95,12 @@ The user often develops and runs commands (and AI agents like `agy`) directly in
 ### ⚠️ Invariant 7: Mandatory Git Commit on Fixes & Resolutions
 Whenever fixes, bug resolutions, or self-improve loops are completed and pass verification (`npm run build`, `cargo test`), **you MUST immediately create a Git commit** with a clear Conventional Commit message (e.g. `feat: ...`, `fix: ...`, `refactor: ...`). Never leave verified fixes or solutions uncommitted before reporting back!
 
+### ⚠️ Invariant 8: Lean Documentation & Anti-Bloat Policy (< 150 Lines)
+Never bloat project memory files (`PROJECT_STATE.md`, `GEMINI.md`) with historical milestone diaries or changelog essays.
+- **Git is Truth**: `git log --oneline` is the single system of record for history.
+- **Actionable Grounding Only**: Documents must strictly contain only currently actionable architecture, active API endpoints, strict operating invariants, and active roadmap items.
+- **Strict Size Cap**: Keep documentation under 120–150 lines. If a document grows, prune obsolete history and compact it immediately.
+
 ---
 
 ## 4. Design System & Palette (Cybran Nation)
