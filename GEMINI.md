@@ -92,6 +92,9 @@ The user often develops and runs commands (and AI agents like `agy`) directly in
   Remove-Item .\veron.old.exe -Force -ErrorAction SilentlyContinue; Move-Item .\veron.exe .\veron.old.exe -Force; Copy-Item src-tauri\target\release\veron.exe .\veron.exe -Force
   ```
 
+### ⚠️ Invariant 7: Mandatory Git Commit on Fixes & Resolutions
+Whenever fixes, bug resolutions, or self-improve loops are completed and pass verification (`npm run build`, `cargo test`), **you MUST immediately create a Git commit** with a clear Conventional Commit message (e.g. `feat: ...`, `fix: ...`, `refactor: ...`). Never leave verified fixes or solutions uncommitted before reporting back!
+
 ---
 
 ## 4. Design System & Palette (Cybran Nation)
@@ -142,6 +145,7 @@ All endpoints require authentication via Bearer token:
 | `POST` | `/api/sessions/:id/resize` | `{"cols": 140, "rows": 40}` | Resizes ConPTY buffer |
 | `GET` | `/api/sessions/:id/ws` | Query: `?token=<token>` | **WebSocket**: Binary/Text stream. Replays 512 KB history on connect. |
 | `POST` | `/api/captures/open` | `{"path": "..."}` or `{"url": "..."}` | Opens file in Explorer/Editor via native OS shell |
+| `POST` | `/api/captures/cleanup` | `{"older_than_days": 7, "max_total_mb": 100}` | Clean old/excess captures with disk space report |
 
 ---
 

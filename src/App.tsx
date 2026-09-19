@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   CapturesInfo,
+  CapturePathFormat,
   SessionInfo,
   SystemInfo,
   Workspace,
@@ -17,6 +18,7 @@ import {
   renameWorkspace,
   fetchCapturesInfo,
   clearCaptures,
+  cleanupCaptures,
   openCapturesFolder,
   sendSessionInput,
   renameSession,
@@ -170,6 +172,18 @@ export const App: React.FC = () => {
     const saved = localStorage.getItem('veron_agy_mode');
     return saved !== null ? saved === 'true' : true;
   });
+
+  // Capture Path Format ('absolute' for AI agents, 'relative', 'markdown')
+  const [capturePathFormat, setCapturePathFormat] = useState<CapturePathFormat>(() => {
+    const saved = localStorage.getItem('veron_capture_format') as CapturePathFormat;
+    return saved || 'absolute';
+  });
+
+  const handleSetCapturePathFormat = (format: CapturePathFormat) => {
+    setCapturePathFormat(format);
+    localStorage.setItem('veron_capture_format', format);
+    showToast(`Path Format: ${format.toUpperCase()}`);
+  };
 
   const handleToggleAgyMode = (enabled?: boolean) => {
     setAgyMode((prev) => {
@@ -840,6 +854,18 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleCleanupCaptures = async (days?: number, maxMb?: number) => {
+    try {
+      const res = await cleanupCaptures(days, maxMb);
+      const info = await fetchCapturesInfo();
+      setCapturesInfo(info);
+      const freedMb = (res.freed_bytes / (1024 * 1024)).toFixed(1);
+      showToast(`Cleaned ${res.deleted_count} captures (${freedMb} MB freed)`);
+    } catch {
+      showToast('Failed to clean up captures');
+    }
+  };
+
   // Helper to get session for a slot index in active workspace
   const getSessionForSlot = (idx: number): SessionInfo | undefined => {
     const sid = currentSlots[idx];
@@ -1024,6 +1050,7 @@ export const App: React.FC = () => {
           onToast={showToast}
           agyMode={agyMode}
           onToggleAgyMode={() => handleToggleAgyMode()}
+          capturePathFormat={capturePathFormat}
           isAntigravity={Boolean(isAntigravityWorkspace)}
           slotIndex={idx}
           onStartDrag={handleStartDrag}
@@ -1377,7 +1404,10 @@ export const App: React.FC = () => {
         onSetCustomAccent={handleSetCustomAccent}
         capturesInfo={capturesInfo}
         onClearCaptures={handleClearCaptures}
+        onCleanupCaptures={handleCleanupCaptures}
         onOpenCapturesFolder={handleOpenCapturesFolder}
+        capturePathFormat={capturePathFormat}
+        onSetCapturePathFormat={handleSetCapturePathFormat}
         systemInfo={systemInfo}
         onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
         agyMode={agyMode}

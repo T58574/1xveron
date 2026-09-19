@@ -18,9 +18,21 @@ import {
   Sparkles,
   CheckCircle2,
   Terminal,
+  Volume2,
+  VolumeX,
+  Play,
+  Clock,
+  Link,
 } from 'lucide-react';
-import { CapturesInfo, SystemInfo } from '../types';
+import { CapturesInfo, CapturePathFormat, SystemInfo } from '../types';
 import { copyToGlobalClipboard } from '../services/api';
+import {
+  isSoundEnabled,
+  setSoundEnabled,
+  getSoundVolume,
+  setSoundVolume,
+  testVeronChime,
+} from '../services/sound';
 import {
   VeronTheme,
   ThemeSettings,
@@ -39,7 +51,10 @@ interface SettingsModalProps {
   onSetCustomAccent?: (accent: string | null) => void;
   capturesInfo: CapturesInfo | null;
   onClearCaptures: () => void;
+  onCleanupCaptures?: (olderThanDays?: number, maxTotalMb?: number) => Promise<void>;
   onOpenCapturesFolder: () => void;
+  capturePathFormat?: CapturePathFormat;
+  onSetCapturePathFormat?: (format: CapturePathFormat) => void;
   systemInfo: SystemInfo | null;
   onOpenRemoteModal: () => void;
   agyMode: boolean;
@@ -57,7 +72,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSetCustomAccent,
   capturesInfo,
   onClearCaptures,
+  onCleanupCaptures,
   onOpenCapturesFolder,
+  capturePathFormat = 'absolute',
+  onSetCapturePathFormat,
   systemInfo,
   onOpenRemoteModal,
   agyMode,
@@ -67,6 +85,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [customHexInput, setCustomHexInput] = useState<string>(
     activeTheme?.accent || '#f59e0b'
   );
+  const [soundActive, setSoundActive] = useState(isSoundEnabled());
+  const [soundVol, setSoundVol] = useState(getSoundVolume());
+  const [isCleaning, setIsCleaning] = useState<number | null>(null);
 
   useEffect(() => {
     if (activeTheme?.accent) {
@@ -383,7 +404,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider block mb-2.5">
               AI Agent & Image Paste Mode
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               {/* AGY Mode */}
               <button
                 type="button"
@@ -441,16 +462,74 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Automatically types relative file path (.veron/captures/...) into terminal prompt on Ctrl+V. Ideal for local models, bash, and custom scripts.
+                  Automatically types screenshot file path into terminal prompt on Ctrl+V. Ideal for local models, bash, and custom scripts.
                 </p>
               </button>
             </div>
+
+            {/* Sub-setting: Path Format in Clipboard / Prompt */}
+            <div className="p-3 rounded-xl bg-[#0c0d12] border border-white/[0.06]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
+                  <Link className="w-3.5 h-3.5 text-accent" />
+                  Clipboard & Prompt Path Format
+                </span>
+                <span className="text-[10px] text-zinc-500 font-mono">
+                  {capturePathFormat === 'absolute'
+                    ? 'C:/.../screenshot.png'
+                    : capturePathFormat === 'relative'
+                    ? '.veron/captures/...'
+                    : '![capture](file:///...)'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onSetCapturePathFormat?.('absolute')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-center border ${
+                    capturePathFormat === 'absolute'
+                      ? 'bg-accent/15 border-accent/40 text-accent font-semibold'
+                      : 'bg-white/[0.02] border-white/[0.04] text-zinc-400 hover:bg-white/[0.05]'
+                  }`}
+                  title="Zero guesswork for external agents. Works anywhere across drives and projects."
+                >
+                  Absolute (Agent)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetCapturePathFormat?.('relative')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-center border ${
+                    capturePathFormat === 'relative'
+                      ? 'bg-accent/15 border-accent/40 text-accent font-semibold'
+                      : 'bg-white/[0.02] border-white/[0.04] text-zinc-400 hover:bg-white/[0.05]'
+                  }`}
+                  title="Short relative path (.veron/captures/...) for local terminal work."
+                >
+                  Relative Path
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetCapturePathFormat?.('markdown')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-center border ${
+                    capturePathFormat === 'markdown'
+                      ? 'bg-accent/15 border-accent/40 text-accent font-semibold'
+                      : 'bg-white/[0.02] border-white/[0.04] text-zinc-400 hover:bg-white/[0.05]'
+                  }`}
+                  title="Formatted Markdown image link with file:/// protocol."
+                >
+                  Markdown Link
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-500 mt-2">
+                Absolute path prevents AI agents from burning 4+ search tool calls when running outside the Veron workspace.
+              </p>
+            </div>
           </div>
 
-          {/* Section 3: Screenshot Captures */}
+          {/* Section 3: Screenshot Captures & Retention */}
           <div>
             <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider block mb-2.5">
-              Terminal Screenshot Captures
+              Terminal Screenshot Captures & Retention
             </label>
             <div className="p-3.5 rounded-xl bg-[#0c0d12] border border-white/[0.06] flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -465,11 +544,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="text-[11px] font-mono text-zinc-500">.veron/captures</span>
               </div>
 
-              <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04]">
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/[0.04]">
                 <button
                   type="button"
                   onClick={onOpenCapturesFolder}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-xs font-medium text-zinc-200 transition-all border border-white/[0.06] press-scale"
+                  className="flex-1 min-w-[130px] flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-xs font-medium text-zinc-200 transition-all border border-white/[0.06] press-scale"
                 >
                   <FolderOpen className="w-3.5 h-3.5 text-accent" />
                   <span>Open in Explorer</span>
@@ -477,9 +556,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <button
                   type="button"
+                  onClick={async () => {
+                    if (onCleanupCaptures) {
+                      setIsCleaning(7);
+                      await onCleanupCaptures(7);
+                      setIsCleaning(null);
+                    }
+                  }}
+                  disabled={isCleaning !== null || !capturesInfo || capturesInfo.count === 0}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium text-amber-300 transition-all border border-amber-500/20 press-scale"
+                  title="Remove captures older than 7 days"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{isCleaning === 7 ? 'Cleaning...' : 'Clean > 7 Days'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (onCleanupCaptures) {
+                      setIsCleaning(30);
+                      await onCleanupCaptures(30);
+                      setIsCleaning(null);
+                    }
+                  }}
+                  disabled={isCleaning !== null || !capturesInfo || capturesInfo.count === 0}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium text-zinc-300 transition-all border border-white/[0.06] press-scale"
+                  title="Remove captures older than 30 days"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{isCleaning === 30 ? 'Cleaning...' : 'Clean > 30 Days'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={onClearCaptures}
                   disabled={!capturesInfo || capturesInfo.count === 0}
-                  className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium text-red-400 transition-all border border-red-500/20 press-scale"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium text-red-400 transition-all border border-red-500/20 press-scale"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Clear All</span>
@@ -488,7 +601,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section 4: Network & Remote Access */}
+          {/* Section 4: Sound Synthesizer & Task Completion Audio */}
+          <div>
+            <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider block mb-2.5">
+              Sound Synthesizer & Task Completion Audio
+            </label>
+            <div className="p-3.5 rounded-xl bg-[#0c0d12] border border-white/[0.06] flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !soundActive;
+                      setSoundActive(next);
+                      setSoundEnabled(next);
+                    }}
+                    className={`p-1.5 rounded-lg border transition-all ${
+                      soundActive
+                        ? 'bg-accent/15 border-accent/40 text-accent'
+                        : 'bg-white/[0.04] border-white/[0.06] text-zinc-500'
+                    }`}
+                  >
+                    {soundActive ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  </button>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-zinc-200">
+                      Veron Cyber Completion Chime
+                    </span>
+                    <span className="text-[11px] text-zinc-400">
+                      Plays a synthesized harmonic tone when AI agents (Claude, AGY, Codex) or tasks complete
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => testVeronChime()}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-xs font-medium text-zinc-200 border border-white/[0.06] transition-all press-scale"
+                  title="Test chime preview"
+                >
+                  <Play className="w-3 h-3 text-accent fill-accent" />
+                  <span>Test Chime</span>
+                </button>
+              </div>
+
+              {/* Volume Slider */}
+              <div className="flex items-center gap-3 pt-2 border-t border-white/[0.04]">
+                <span className="text-[11px] text-zinc-400 w-14 shrink-0">Volume</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={soundVol}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setSoundVol(val);
+                    setSoundVolume(val);
+                  }}
+                  disabled={!soundActive}
+                  className="flex-1 accent-[var(--veron-accent,#f59e0b)] h-1.5 bg-zinc-700 rounded-lg cursor-pointer disabled:opacity-30"
+                />
+                <span className="font-mono text-xs text-zinc-300 w-10 text-right">
+                  {Math.round(soundVol * 100)}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 5: Network & Remote Access */}
           <div>
             <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider block mb-2.5">
               Network & Remote Access
@@ -545,7 +726,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section 5: Keyboard Shortcuts */}
+          {/* Section 6: Keyboard Shortcuts */}
           <div>
             <div className="flex items-center gap-2 mb-2.5">
               <Keyboard className="w-3.5 h-3.5 text-accent" />

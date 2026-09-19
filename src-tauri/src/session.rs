@@ -575,7 +575,7 @@ impl SessionManager {
             .unwrap_or_else(|_| target_path.clone());
         let full_path_str = strip_extended_prefix(&full_path_buf)
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
 
         let base_dir = session_id
             .and_then(|sid| self.sessions.read().get(sid).map(|s| PathBuf::from(&s.cwd)))
@@ -675,6 +675,88 @@ impl SessionManager {
             }
         }
         Ok(deleted)
+    }
+
+    pub fn cleanup_captures(
+        &self,
+        older_than_days: Option<u64>,
+        max_total_mb: Option<u64>,
+    ) -> Result<(usize, u64), std::io::Error> {
+        let mut deleted_count = 0;
+        let mut freed_bytes = 0;
+
+        let entries = std::fs::read_dir(&self.captures_dir)?;
+
+        struct CaptureEntry {
+            path: PathBuf,
+            size: u64,
+            modified: std::time::SystemTime,
+        }
+
+        let mut file_entries = Vec::new();
+        let now = std::time::SystemTime::now();
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Ok(meta) = entry.metadata() {
+                    let size = meta.len();
+                    let modified = meta.modified().unwrap_or(now);
+                    file_entries.push(CaptureEntry {
+                        path,
+                        size,
+                        modified,
+                    });
+                }
+            }
+        }
+
+        // 1. Filter by age (older_than_days)
+        if let Some(days) = older_than_days {
+            if days > 0 {
+                let cutoff_secs = days * 24 * 3600;
+                let mut remaining = Vec::new();
+                for item in file_entries {
+                    let is_older = match now.duration_since(item.modified) {
+                        Ok(dur) => dur.as_secs() >= cutoff_secs,
+                        Err(_) => false,
+                    };
+                    if is_older {
+                        if std::fs::remove_file(&item.path).is_ok() {
+                            deleted_count += 1;
+                            freed_bytes += item.size;
+                        }
+                    } else {
+                        remaining.push(item);
+                    }
+                }
+                file_entries = remaining;
+            }
+        }
+
+        // 2. Filter by max_total_mb (delete oldest first if exceeding)
+        if let Some(max_mb) = max_total_mb {
+            let max_bytes = max_mb * 1024 * 1024;
+            let mut current_total: u64 = file_entries.iter().map(|e| e.size).sum();
+
+            if current_total > max_bytes {
+                // Sort oldest first
+                file_entries.sort_by_key(|e| e.modified);
+
+                for item in file_entries {
+                    if current_total <= max_bytes {
+                        break;
+                    }
+                    if std::fs::remove_file(&item.path).is_ok() {
+                        deleted_count += 1;
+                        freed_bytes += item.size;
+                        current_total = current_total.saturating_sub(item.size);
+                    }
+                }
+            }
+        }
+
+        Ok((deleted_count, freed_bytes))
     }
 }
 
@@ -921,6 +1003,36 @@ mod tests {
         // The last 700 bytes must be 'B', and the first 324 bytes must be 'A'
         assert_eq!(&contiguous[max_size - 700..], &vec![b'B'; 700][..]);
         assert_eq!(&contiguous[..max_size - 700], &vec![b'A'; 324][..]);
+    }
+
+    #[test]
+    fn test_cleanup_captures() {
+        let temp_dir = std::env::temp_dir().join(format!("veron_test_cleanup_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
+        let caps = temp_dir.join("captures");
+        let sm = SessionManager::with_captures_dir(caps.clone());
+
+        // Create 3 dummy files
+        let f1 = caps.join("img1.png");
+        let f2 = caps.join("img2.png");
+        let f3 = caps.join("img3.png");
+        std::fs::write(&f1, vec![0u8; 1000]).unwrap();
+        std::fs::write(&f2, vec![0u8; 2000]).unwrap();
+        std::fs::write(&f3, vec![0u8; 3000]).unwrap();
+
+        let (count_before, size_before) = sm.get_captures_info();
+        assert_eq!(count_before, 3);
+        assert_eq!(size_before, 6000);
+
+        // Cleanup with max_total_mb = 0 (should keep under 0 MB -> delete all)
+        let (deleted, freed) = sm.cleanup_captures(None, Some(0)).unwrap();
+        assert_eq!(deleted, 3);
+        assert_eq!(freed, 6000);
+
+        let (count_after, size_after) = sm.get_captures_info();
+        assert_eq!(count_after, 0);
+        assert_eq!(size_after, 0);
+
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 }
 

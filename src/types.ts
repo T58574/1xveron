@@ -75,6 +75,15 @@ export interface CapturesInfo {
   size_formatted: string;
 }
 
+export type CapturePathFormat = 'absolute' | 'relative' | 'markdown';
+
+export interface CleanupCapturesResult {
+  deleted_count: number;
+  freed_bytes: number;
+  remaining_count: number;
+  remaining_size: number;
+}
+
 export type LayoutMode = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface PaneConfig {

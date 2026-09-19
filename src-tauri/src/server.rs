@@ -216,6 +216,7 @@ pub fn create_router(state: AppState) -> Router {
             post(upload_batch_screenshots).layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
         )
         .route("/api/captures", get(get_captures_info).delete(clear_captures))
+        .route("/api/captures/cleanup", post(cleanup_captures_handler))
         .route("/api/captures/open", post(open_captures_folder))
         .route("/api/workspaces", get(list_workspaces).post(create_workspace))
         .route("/api/workspaces/:id", delete(delete_workspace).patch(rename_workspace))
@@ -719,6 +720,43 @@ async fn clear_captures(
     }
     let deleted = state.manager.clear_captures().unwrap_or(0);
     Ok(Json(serde_json::json!({ "deleted": deleted })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct CleanupCapturesRequest {
+    pub older_than_days: Option<u64>,
+    pub max_total_mb: Option<u64>,
+}
+
+#[derive(serde::Serialize)]
+pub struct CleanupCapturesResponse {
+    pub deleted_count: usize,
+    pub freed_bytes: u64,
+    pub remaining_count: usize,
+    pub remaining_size: u64,
+}
+
+async fn cleanup_captures_handler(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Json(payload): Json<CleanupCapturesRequest>,
+) -> Result<Json<CleanupCapturesResponse>, StatusCode> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let (deleted_count, freed_bytes) = state
+        .manager
+        .cleanup_captures(payload.older_than_days, payload.max_total_mb)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let (remaining_count, remaining_size) = state.manager.get_captures_info();
+
+    Ok(Json(CleanupCapturesResponse {
+        deleted_count,
+        freed_bytes,
+        remaining_count,
+        remaining_size,
+    }))
 }
 
 async fn open_captures_folder(

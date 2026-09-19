@@ -1,6 +1,7 @@
 import {
   ActiveState,
   CapturesInfo,
+  CleanupCapturesResult,
   DetectedPort,
   GitStatusResponse,
   SessionInfo,
@@ -330,6 +331,23 @@ export async function clearCaptures(): Promise<number> {
   if (!res.ok) throw new Error('Failed to clear captures');
   const data = await res.json();
   return data.deleted || 0;
+}
+
+export async function cleanupCaptures(
+  olderThanDays?: number,
+  maxTotalMb?: number
+): Promise<CleanupCapturesResult> {
+  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+  const res = await fetch(`${API_BASE}/api/captures/cleanup${tokenParam}`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      older_than_days: olderThanDays,
+      max_total_mb: maxTotalMb,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to clean up captures');
+  return res.json();
 }
 
 export async function openCapturesFolder(): Promise<void> {

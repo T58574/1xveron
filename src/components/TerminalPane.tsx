@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Maximize2, Minimize2, X, Plus, Terminal as TermIcon, Image, ImagePlus, Folder, Check } from 'lucide-react';
-import { SessionInfo } from '../types';
+import { CapturePathFormat, SessionInfo } from '../types';
 import {
   getWsUrl,
   uploadScreenshot,
@@ -15,6 +15,7 @@ import {
 } from '../services/api';
 import { AntigravityIcon } from './AntigravityIcon';
 import { VeronTheme } from '../services/theme';
+import { playVeronChime } from '../services/sound';
 
 interface TerminalPaneProps {
   session: SessionInfo | undefined;
@@ -31,6 +32,7 @@ interface TerminalPaneProps {
   onCaptureSaved?: () => void;
   agyMode?: boolean;
   onToggleAgyMode?: () => void;
+  capturePathFormat?: CapturePathFormat;
   isAntigravity?: boolean;
   slotIndex?: number;
   onStartDrag?: (slotIdx: number, session: SessionInfo, e: React.PointerEvent) => void;
@@ -52,6 +54,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   onCaptureSaved,
   agyMode = true,
   onToggleAgyMode,
+  capturePathFormat = 'absolute',
   isAntigravity = false,
   slotIndex,
   onStartDrag,
@@ -296,6 +299,68 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     let retryCount = 0;
     let resizeTimeout: any = null;
     let isFirstConnect = true;
+    let checkInputTimer: any = null;
+    let isExecutingRef = false;
+    let executionStartRef = 0;
+    let lastChimeRef = 0;
+
+    const triggerCompletionChime = () => {
+      const now = Date.now();
+      if (now - lastChimeRef < 3000) return;
+      lastChimeRef = now;
+      playVeronChime();
+
+      if (document.visibilityState === 'hidden' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('Veron Terminal', {
+            body: `${session.name}: Task finished`,
+            silent: true,
+          });
+        } catch {}
+      }
+    };
+
+    const checkAwaitingInputOrCompletion = () => {
+      try {
+        const buffer = term.buffer.active;
+        const line = buffer.getLine(buffer.cursorY)?.translateToString().trim() || '';
+        const prevLine = buffer.cursorY > 0 ? buffer.getLine(buffer.cursorY - 1)?.translateToString().trim() || '' : '';
+        const combined = `${prevLine} ${line}`.toLowerCase();
+
+        const isAgentPrompt =
+          line.endsWith('?') ||
+          line.endsWith('›') ||
+          line.endsWith('>') ||
+          line.endsWith('❯') ||
+          line.includes('[y/n]') ||
+          line.includes('(y/n)') ||
+          combined.includes('confirm?') ||
+          combined.includes('select an option') ||
+          combined.includes('what would you like to do') ||
+          combined.includes('claude is ready') ||
+          combined.includes('cost:') ||
+          combined.includes('agy ›') ||
+          combined.includes('antigravity ›');
+
+        if (isAntigravity) {
+          setIsAwaitingInput(Boolean(isAgentPrompt));
+        }
+
+        const isShellPrompt =
+          line.endsWith('>') ||
+          line.endsWith('$') ||
+          line.endsWith('#') ||
+          line.endsWith('%');
+
+        const now = Date.now();
+        const duration = now - executionStartRef;
+
+        if (isExecutingRef && (isAgentPrompt || isShellPrompt) && duration > 2000) {
+          isExecutingRef = false;
+          triggerCompletionChime();
+        }
+      } catch {}
+    };
 
     const connectWs = () => {
       if (isDisposed) return;
@@ -331,9 +396,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         }
         if (isAntigravity) {
           setIsAwaitingInput(false);
-          clearTimeout(checkInputTimer);
-          checkInputTimer = setTimeout(checkAwaitingInput, 600);
         }
+        clearTimeout(checkInputTimer);
+        checkInputTimer = setTimeout(checkAwaitingInputOrCompletion, 500);
       };
 
       ws.onclose = (event) => {
@@ -369,35 +434,18 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     const onBellDisposable = term.onBell(() => {
       setIsBelling(true);
+      playVeronChime();
       setTimeout(() => setIsBelling(false), 600);
     });
-
-    let checkInputTimer: any = null;
-    const checkAwaitingInput = () => {
-      if (!isAntigravity) return;
-      try {
-        const buffer = term.buffer.active;
-        const line = buffer.getLine(buffer.cursorY)?.translateToString().trim() || '';
-        const prevLine = buffer.cursorY > 0 ? buffer.getLine(buffer.cursorY - 1)?.translateToString().trim() || '' : '';
-        const combined = `${prevLine} ${line}`.toLowerCase();
-
-        const isPrompt =
-          line.endsWith('?') ||
-          line.endsWith('›') ||
-          line.endsWith('>') ||
-          line.includes('[y/n]') ||
-          line.includes('(y/n)') ||
-          combined.includes('confirm?') ||
-          combined.includes('select an option') ||
-          combined.includes('what would you like to do');
-
-        setIsAwaitingInput(Boolean(isPrompt));
-      } catch {}
-    };
 
     const onDataDisposable = term.onData((data) => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'input', data }));
+      }
+      if (data.includes('\r') || data.includes('\n')) {
+        // User entered a command
+        executionStartRef = Date.now();
+        isExecutingRef = true;
       }
       if (isAntigravity) {
         setIsAwaitingInput(false);
@@ -454,14 +502,20 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             onToast(agyMode ? 'Archiving capture (AGY Mode)...' : 'Saving capture...');
             const shouldPaste = !agyMode;
             const res = await uploadScreenshot(base64, session.id, undefined, shouldPaste);
-            const relPath = res.relative_path || res.file_path;
+            const baseName = res.file_path.split('/').pop() || 'screenshot.png';
+            let formattedPath = res.file_path;
+            if (capturePathFormat === 'relative') {
+              formattedPath = res.relative_path || res.file_path;
+            } else if (capturePathFormat === 'markdown') {
+              formattedPath = `![screenshot](file:///${res.file_path.replace(/^\/+/, '')})`;
+            }
             
             if (agyMode) {
-              onToast(`Archived: ${relPath} (AGY attached)`);
+              onToast(`Archived: ${baseName} (AGY attached)`);
             } else {
-              onToast(`Captured: ${relPath}`);
+              onToast(`Captured & copied: ${baseName}`);
               try {
-                await copyToGlobalClipboard(relPath);
+                await copyToGlobalClipboard(formattedPath);
               } catch {}
             }
             onCaptureSaved?.();
@@ -821,8 +875,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       const res = await uploadBatchScreenshots(items, session.id);
       onToast(`Attached ${res.count} image${res.count > 1 ? 's' : ''}`);
 
+      let batchClipboard = res.paths_string;
+      if (capturePathFormat === 'absolute' && res.files) {
+        batchClipboard = res.files
+          .map((f) => (f.file_path.includes(' ') ? `"${f.file_path}"` : f.file_path))
+          .join(' ');
+      } else if (capturePathFormat === 'markdown' && res.files) {
+        batchClipboard = res.files
+          .map((f) => `![screenshot](file:///${f.file_path.replace(/^\/+/, '')})`)
+          .join('\n');
+      }
+
       try {
-        await navigator.clipboard.writeText(res.paths_string);
+        await copyToGlobalClipboard(batchClipboard);
       } catch {}
 
       onCaptureSaved?.();
