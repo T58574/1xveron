@@ -474,6 +474,25 @@
   - `cargo test --manifest-path src-tauri/Cargo.toml`: 19 из 19 тестов успешно пройдены.
   - `cargo clippy --manifest-path src-tauri/Cargo.toml`: 0 warnings, 0 errors.
 
+### Milestone 27: Мгновенный переход по ссылкам из терминала в браузер ОС (Zero Confirm Popups & `@xterm/addon-web-links`)
+- **Первопричина бага (Root Cause Analysis)**:
+  1. *Модальное окно предупреждения `WARNING: This link could potentially be dangerous`*: при выводе ссылок агентами (OSC 8 последовательности) библиотека `xterm.js` при отсутствии опции `linkHandler` вызывала дефолтный `defaultActivate`, показывающий системный `confirm()`.
+  2. *Блокировка `window.open()` в WebView2*: после подтверждения вызывался `window.open()`, который в нативном окне WebView2 блокировался политиками безопасности или не имел связи с системным браузером Windows, приводя к полному бездействию.
+  3. *Недоступность обычных текстовых ссылок*: plain text URL (`https://...`) в логах и выводе команд не распознавались из-за отсутствия аддона веб-ссылок.
+- **Архитектурное решение**:
+  - **Прямой `linkHandler` в `TerminalPane.tsx` и `MobileView.tsx`**:
+    - В `new Terminal({...})` передана реализация `linkHandler.activate`, напрямую вызывающая `openBrowserUrl(uri)` без раздражающих диалоговых окон с предупреждениями.
+  - **Интеграция `@xterm/addon-web-links`**:
+    - Установлен и зарегистрирован аддон `@xterm/addon-web-links` (v0.11.0) для автоматического парсинга любых `http://` и `https://` ссылок в терминале с кликабельным переходом.
+  - **Двухуровневый шлюз открытия ссылок (`api.ts` + Win32 `ShellExecuteW`)**:
+    - Функция `openBrowserUrl` определяет контекст исполнения: для локального десктопного сеанса обращается к `/api/open-url` (где сервер вызывает нативный `ShellExecuteW`), а для удаленных мобильных клиентов открывает ссылку в новой вкладке мобильного браузера.
+  - **Системный перехват новых окон в `wry` (`main.rs`)**:
+    - В `WebViewBuilder` добавлен `.with_new_window_req_handler`, перехватывающий любые внешние вызовы создания окон и открывающий их через `ports::open_browser_url` с возвратом `NewWindowResponse::Deny`.
+- **Верификация**:
+  - `npm run build`: чистая сборка TypeScript + Vite (1.82с).
+  - `cargo test --manifest-path src-tauri/Cargo.toml`: все 19 тестов успешно пройдены.
+  - Релизный бинарник `veron.exe` обновлен через безопасный NTFS rename trick.
+
 ---
 
 ## 5. Инварианты и правила для будущих сессий

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Maximize2, Minimize2, X, Plus, Terminal as TermIcon, Image, ImagePlus, Folder, Check } from 'lucide-react';
 import { SessionInfo } from '../types';
 import {
@@ -10,6 +11,7 @@ import {
   uploadBatchScreenshots,
   copyToGlobalClipboard,
   readFromGlobalClipboard,
+  openBrowserUrl,
 } from '../services/api';
 import { AntigravityIcon } from './AntigravityIcon';
 import { VeronTheme } from '../services/theme';
@@ -92,6 +94,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     if (!containerRef.current || !session) return;
 
     const isDark = theme === 'dark';
+    const handleLinkActivation = (uri: string) => {
+      openBrowserUrl(uri);
+      const display = uri.length > 40 ? `${uri.slice(0, 37)}...` : uri;
+      onToast(`Opened ${display}`);
+    };
+
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -99,6 +107,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
       lineHeight: 1.25,
       allowProposedApi: true,
+      linkHandler: {
+        activate: (_event: MouseEvent, uri: string) => {
+          handleLinkActivation(uri);
+        },
+      },
       windowsPty: {
         backend: 'conpty',
       },
@@ -153,6 +166,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+
+    const webLinksAddon = new WebLinksAddon((_event: MouseEvent, uri: string) => {
+      handleLinkActivation(uri);
+    });
+    term.loadAddon(webLinksAddon);
+
     term.open(containerRef.current);
     try {
       fitAddon.fit();

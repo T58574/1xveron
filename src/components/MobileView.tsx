@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import {
   Terminal as TermIcon,
   ChevronDown,
@@ -11,7 +12,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { SessionInfo, Workspace } from '../types';
-import { getWsUrl, copyToGlobalClipboard, readFromGlobalClipboard } from '../services/api';
+import { getWsUrl, copyToGlobalClipboard, readFromGlobalClipboard, openBrowserUrl } from '../services/api';
 import { AntigravityIcon } from './AntigravityIcon';
 import { VeronTheme } from '../services/theme';
 
@@ -90,11 +91,20 @@ export const MobileView: React.FC<MobileViewProps> = ({
     if (!containerRef.current || !activeSession) return;
 
     const isDark = theme === 'dark';
+    const handleLinkActivation = (uri: string) => {
+      openBrowserUrl(uri);
+    };
+
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 12,
       fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
       lineHeight: 1.2,
+      linkHandler: {
+        activate: (_event: MouseEvent, uri: string) => {
+          handleLinkActivation(uri);
+        },
+      },
       theme: activeTheme ? activeTheme.xterm : (isDark
         ? {
             background: '#090a0d',
@@ -155,6 +165,12 @@ export const MobileView: React.FC<MobileViewProps> = ({
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+
+    const webLinksAddon = new WebLinksAddon((_event: MouseEvent, uri: string) => {
+      handleLinkActivation(uri);
+    });
+    term.loadAddon(webLinksAddon);
+
     term.open(containerRef.current);
 
     termRef.current = term;

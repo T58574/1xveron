@@ -431,12 +431,29 @@ export async function fetchListeningPorts(workspaceId?: string): Promise<Detecte
 }
 
 export async function openBrowserUrl(url: string): Promise<void> {
-  const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
-  await fetch(`${API_BASE}/api/open-url${tokenParam}`, {
-    method: 'POST',
-    headers: getHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ url }),
-  }).catch(() => {
-    window.open(url, '_blank');
-  });
+  const trimmed = url.trim();
+  if (!trimmed) return;
+
+  // Check if running on the host machine (desktop WebView2 or local browser)
+  const isLocalOrDesktop =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    !!(window as any).chrome?.webview;
+
+  if (isLocalOrDesktop) {
+    const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
+    try {
+      const res = await fetch(`${API_BASE}/api/open-url${tokenParam}`, {
+        method: 'POST',
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ url: trimmed }),
+      });
+      if (res.ok) return;
+    } catch (e) {
+      console.warn('[Veron] Failed to open URL via backend:', e);
+    }
+  }
+
+  // Fallback or remote client (e.g. phone accessing via LAN)
+  window.open(trimmed, '_blank', 'noopener,noreferrer');
 }

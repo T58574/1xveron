@@ -173,6 +173,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_url = format!("http://localhost:{}?token={}", port, auth_token);
     let _webview = WebViewBuilder::new()
         .with_url(&app_url)
+        .with_new_window_req_handler(|url, _| {
+            let _ = ports::open_browser_url(&url);
+            wry::NewWindowResponse::Deny
+        })
         .build(&window)?;
 
     event_loop.run(move |event, _, control_flow| {
