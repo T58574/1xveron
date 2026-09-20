@@ -433,7 +433,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  For AGY CLI 1.2+. AGY attaches images natively via clipboard; Veron saves captures to disk (.veron/captures) without polluting prompt with text paths.
+                  For AGY CLI 1.2+. AGY attaches images natively; Veron saves captures to disk and copies the formatted absolute path to clipboard without polluting prompt.
                 </p>
               </button>
 
@@ -462,7 +462,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Automatically types screenshot file path into terminal prompt on Ctrl+V. Ideal for local models, bash, and custom scripts.
+                  Automatically types normalized screenshot file path into terminal prompt on Ctrl+V and copies to clipboard. Ideal for local models, bash, and scripts.
                 </p>
               </button>
             </div>
@@ -541,7 +541,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       : 'No screenshots saved yet'}
                   </span>
                 </div>
-                <span className="text-[11px] font-mono text-zinc-500">.veron/captures</span>
+                <span
+                  className="text-[11px] font-mono text-zinc-500 truncate max-w-[200px]"
+                  title={capturesInfo?.captures_dir || '.veron/captures'}
+                >
+                  {capturesInfo?.captures_dir
+                    ? capturesInfo.captures_dir.split('/').slice(-2).join('/')
+                    : '.veron/captures'}
+                </span>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/[0.04]">

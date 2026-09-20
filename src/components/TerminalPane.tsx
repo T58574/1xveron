@@ -501,7 +501,13 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           try {
             onToast(agyMode ? 'Archiving capture (AGY Mode)...' : 'Saving capture...');
             const shouldPaste = !agyMode;
-            const res = await uploadScreenshot(base64, session.id, undefined, shouldPaste);
+            const res = await uploadScreenshot(
+              base64,
+              session.id,
+              undefined,
+              shouldPaste,
+              capturePathFormat
+            );
             const baseName = res.file_path.split('/').pop() || 'screenshot.png';
             let formattedPath = res.file_path;
             if (capturePathFormat === 'relative') {
@@ -510,13 +516,15 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               formattedPath = `![screenshot](file:///${res.file_path.replace(/^\/+/, '')})`;
             }
             
+            // Invariant: Always copy formatted path to global clipboard so external agents & chats receive it immediately
+            try {
+              await copyToGlobalClipboard(formattedPath);
+            } catch {}
+
             if (agyMode) {
-              onToast(`Archived: ${baseName} (AGY attached)`);
+              onToast(`Archived & copied: ${baseName}`);
             } else {
-              onToast(`Captured & copied: ${baseName}`);
-              try {
-                await copyToGlobalClipboard(formattedPath);
-              } catch {}
+              onToast(`Captured & pasted: ${baseName}`);
             }
             onCaptureSaved?.();
           } catch (err) {
@@ -872,7 +880,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         })
       );
 
-      const res = await uploadBatchScreenshots(items, session.id);
+      const res = await uploadBatchScreenshots(items, session.id, capturePathFormat);
       onToast(`Attached ${res.count} image${res.count > 1 ? 's' : ''}`);
 
       let batchClipboard = res.paths_string;
@@ -1059,8 +1067,8 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             }}
             title={
               agyMode
-                ? 'AGY Mode Active: AGY attaches images natively from clipboard. Terminal path injection muted. Click to toggle Direct Path mode.'
-                : 'Direct Path Mode Active: Pastes relative file path into terminal prompt on Ctrl+V. Click to toggle AGY mode.'
+                ? 'AGY Mode Active: AGY attaches images natively. Terminal path injection muted; formatted path copied to clipboard. Click to toggle Direct Path mode.'
+                : 'Direct Path Mode Active: Types formatted file path directly into terminal prompt on Ctrl+V. Click to toggle AGY mode.'
             }
             className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-all duration-200 ease-apple cursor-pointer select-none press-scale ${
               agyMode
@@ -1086,8 +1094,8 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             }}
             title={
               agyMode
-                ? 'Archive screenshot from clipboard (Ctrl+V) [AGY Mode: path muted]'
-                : 'Paste screenshot from clipboard (Ctrl+V) [Direct Path Mode: injects path]'
+                ? 'Save screenshot from clipboard (Ctrl+V) [AGY Mode: copies path to clipboard]'
+                : 'Paste screenshot from clipboard (Ctrl+V) [Direct Path Mode: injects path to prompt]'
             }
             className="p-1 rounded text-zinc-400 hover:text-accent hover:bg-white/[0.06] cursor-pointer transition-all duration-200 ease-apple press-scale"
           >

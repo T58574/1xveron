@@ -79,6 +79,7 @@ pub struct UploadPayload {
     pub filename: Option<String>,
     pub session_id: Option<String>,
     pub paste_to_terminal: Option<bool>,
+    pub path_format: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -91,6 +92,7 @@ pub struct UploadItem {
 pub struct BatchUploadPayload {
     pub images: Vec<UploadItem>,
     pub session_id: Option<String>,
+    pub path_format: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -114,6 +116,7 @@ pub struct CapturesInfo {
     pub count: usize,
     pub size_bytes: u64,
     pub size_formatted: String,
+    pub captures_dir: String,
 }
 
 #[derive(Deserialize)]
@@ -624,11 +627,13 @@ async fn upload_screenshot(
         return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
     }
     let paste_to_terminal = payload.paste_to_terminal.unwrap_or(true);
+    let path_format = payload.path_format.as_deref();
     match state.manager.save_image_and_paste(
         &payload.image,
         payload.filename.as_deref(),
         payload.session_id.as_deref(),
         paste_to_terminal,
+        path_format,
     ) {
         Ok(capture) => Ok(Json(UploadResponse {
             success: true,
@@ -655,9 +660,10 @@ async fn upload_batch_screenshots(
         .map(|item| (item.image, item.filename))
         .collect();
 
+    let path_format = payload.path_format.as_deref();
     match state
         .manager
-        .save_images_batch_and_paste(&items, payload.session_id.as_deref())
+        .save_images_batch_and_paste(&items, payload.session_id.as_deref(), path_format)
     {
         Ok(captures) => {
             let relative_paths: Vec<String> = captures
@@ -666,13 +672,7 @@ async fn upload_batch_screenshots(
                 .collect();
             let paths_string = captures
                 .iter()
-                .map(|c| {
-                    if c.relative_path.contains(' ') {
-                        format!("\"{}\"", c.relative_path)
-                    } else {
-                        c.relative_path.clone()
-                    }
-                })
+                .map(|c| crate::session::format_capture_path(&c.file_path, &c.relative_path, path_format))
                 .collect::<Vec<_>>()
                 .join(" ");
 
@@ -697,6 +697,7 @@ async fn get_captures_info(
         return Err(StatusCode::UNAUTHORIZED);
     }
     let (count, size_bytes) = state.manager.get_captures_info();
+    let captures_dir = state.manager.get_captures_dir_str();
     let size_formatted = if size_bytes < 1024 * 1024 {
         format!("{:.1} KB", size_bytes as f64 / 1024.0)
     } else {
@@ -707,6 +708,7 @@ async fn get_captures_info(
         count,
         size_bytes,
         size_formatted,
+        captures_dir,
     }))
 }
 

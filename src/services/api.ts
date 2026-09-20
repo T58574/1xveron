@@ -221,7 +221,8 @@ export async function uploadScreenshot(
   base64Data: string,
   sessionId?: string,
   filename?: string,
-  pasteToTerminal: boolean = true
+  pasteToTerminal: boolean = true,
+  pathFormat?: string
 ): Promise<{ success: boolean; file_path: string; relative_path: string }> {
   const tokenParam = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
   const res = await fetch(`${API_BASE}/api/upload${tokenParam}`, {
@@ -232,6 +233,7 @@ export async function uploadScreenshot(
       filename,
       session_id: sessionId,
       paste_to_terminal: pasteToTerminal,
+      path_format: pathFormat,
     }),
   });
   if (!res.ok) throw new Error('Failed to upload image');
@@ -240,7 +242,8 @@ export async function uploadScreenshot(
 
 export async function uploadBatchScreenshots(
   items: { image: string; filename?: string }[],
-  sessionId?: string
+  sessionId?: string,
+  pathFormat?: string
 ): Promise<{
   success: boolean;
   count: number;
@@ -255,6 +258,7 @@ export async function uploadBatchScreenshots(
     body: JSON.stringify({
       images: items,
       session_id: sessionId,
+      path_format: pathFormat,
     }),
   });
   if (!res.ok) throw new Error('Failed to upload batch images');

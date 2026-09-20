@@ -73,6 +73,7 @@ export interface CapturesInfo {
   count: number;
   size_bytes: number;
   size_formatted: string;
+  captures_dir?: string;
 }
 
 export type CapturePathFormat = 'absolute' | 'relative' | 'markdown';

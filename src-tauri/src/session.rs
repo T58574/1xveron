@@ -594,23 +594,31 @@ impl SessionManager {
         })
     }
 
+    pub fn get_captures_dir_str(&self) -> String {
+        let full = self
+            .captures_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.captures_dir.clone());
+        strip_extended_prefix(&full)
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
     pub fn save_image_and_paste(
         &self,
         base64_data: &str,
         custom_name: Option<&str>,
         session_id: Option<&str>,
         paste_to_terminal: bool,
+        path_format: Option<&str>,
     ) -> Result<SavedCapture, String> {
         let capture = self.save_single_image(base64_data, custom_name, session_id)?;
 
         if paste_to_terminal {
             if let Some(sid) = session_id {
-                let formatted = if capture.relative_path.contains(' ') {
-                    format!(" \"{}\" ", capture.relative_path)
-                } else {
-                    format!(" {} ", capture.relative_path)
-                };
-                let _ = self.write_input(sid, formatted.as_bytes());
+                let formatted = format_capture_path(&capture.file_path, &capture.relative_path, path_format);
+                let text_to_send = format!(" {} ", formatted);
+                let _ = self.write_input(sid, text_to_send.as_bytes());
             }
         }
 
@@ -621,6 +629,7 @@ impl SessionManager {
         &self,
         items: &[(String, Option<String>)],
         session_id: Option<&str>,
+        path_format: Option<&str>,
     ) -> Result<Vec<SavedCapture>, String> {
         let mut captures = Vec::new();
 
@@ -633,13 +642,7 @@ impl SessionManager {
             if !captures.is_empty() {
                 let paths: Vec<String> = captures
                     .iter()
-                    .map(|c| {
-                        if c.relative_path.contains(' ') {
-                            format!("\"{}\"", c.relative_path)
-                        } else {
-                            c.relative_path.clone()
-                        }
-                    })
+                    .map(|c| format_capture_path(&c.file_path, &c.relative_path, path_format))
                     .collect();
                 let joined = format!(" {} ", paths.join(" "));
                 let _ = self.write_input(sid, joined.as_bytes());
@@ -896,10 +899,68 @@ fn sanitize_filename(name: &str) -> String {
     }
 }
 
+pub fn format_capture_path(file_path: &str, relative_path: &str, format: Option<&str>) -> String {
+    match format.unwrap_or("absolute") {
+        "relative" => {
+            if relative_path.contains(' ') {
+                format!("\"{}\"", relative_path)
+            } else {
+                relative_path.to_string()
+            }
+        }
+        "markdown" => {
+            let normalized = file_path.trim_start_matches('/');
+            format!("![screenshot](file:///{})", normalized)
+        }
+        _ => {
+            // "absolute" is default: zero guesswork for AI agents and external tools
+            if file_path.contains(' ') {
+                format!("\"{}\"", file_path)
+            } else {
+                file_path.to_string()
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn test_format_capture_path() {
+        let file_path = "C:/Users/user/Documents/dev/veron/.veron/captures/screenshot_2026.png";
+        let rel_path = ".veron/captures/screenshot_2026.png";
+
+        assert_eq!(
+            format_capture_path(file_path, rel_path, None),
+            "C:/Users/user/Documents/dev/veron/.veron/captures/screenshot_2026.png"
+        );
+        assert_eq!(
+            format_capture_path(file_path, rel_path, Some("absolute")),
+            "C:/Users/user/Documents/dev/veron/.veron/captures/screenshot_2026.png"
+        );
+        assert_eq!(
+            format_capture_path(file_path, rel_path, Some("relative")),
+            ".veron/captures/screenshot_2026.png"
+        );
+        assert_eq!(
+            format_capture_path(file_path, rel_path, Some("markdown")),
+            "![screenshot](file:///C:/Users/user/Documents/dev/veron/.veron/captures/screenshot_2026.png)"
+        );
+
+        let file_with_space = "C:/My Dev/screenshot.png";
+        let rel_with_space = "sub dir/screenshot.png";
+        assert_eq!(
+            format_capture_path(file_with_space, rel_with_space, Some("absolute")),
+            "\"C:/My Dev/screenshot.png\""
+        );
+        assert_eq!(
+            format_capture_path(file_with_space, rel_with_space, Some("relative")),
+            "\"sub dir/screenshot.png\""
+        );
+    }
 
     #[test]
     fn test_relative_path_nested() {
@@ -952,9 +1013,13 @@ mod tests {
         let base64_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
         
         // Test with paste_to_terminal = false
-        let cap = sm.save_image_and_paste(base64_png, Some("agy_test.png"), None, false).unwrap();
+        let cap = sm.save_image_and_paste(base64_png, Some("agy_test.png"), None, false, None).unwrap();
         assert!(cap.file_path.ends_with("agy_test.png"));
         assert!(std::path::Path::new(&cap.file_path).exists());
+
+        let dir_str = sm.get_captures_dir_str();
+        assert!(!dir_str.is_empty());
+        assert!(!dir_str.contains('\\'));
         
         let _ = std::fs::remove_dir_all(temp_dir);
     }
