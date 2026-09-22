@@ -18,6 +18,7 @@ import {
   ChevronUp,
   ChevronDown,
   Download,
+  ArrowDown,
 } from 'lucide-react';
 import { CapturePathFormat, SessionInfo } from '../types';
 import {
@@ -101,6 +102,17 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const [searchMatchIndex, setSearchMatchIndex] = useState(-1);
   const [searchMatchTotal, setSearchMatchTotal] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const [linesScrolledUp, setLinesScrolledUp] = useState(0);
+
+  const handleScrollToBottom = () => {
+    if (termRef.current) {
+      termRef.current.scrollToBottom();
+      termRef.current.focus();
+      setIsScrolledUp(false);
+      setLinesScrolledUp(0);
+    }
+  };
 
   const getSearchOptions = (caseSens: boolean, regex: boolean) => ({
     caseSensitive: caseSens,
@@ -196,6 +208,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       windowsPty: {
         backend: 'conpty',
       },
+      scrollback: 10000,
+      scrollOnUserInput: true,
+      smoothScrollDuration: 0,
       theme: activeTheme
         ? activeTheme.xterm
         : isDark
@@ -388,6 +403,24 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           setTimeout(() => searchInputRef.current?.focus(), 50);
           return false;
         }
+
+        // 8. Shift+PageUp / Shift+PageDown / Shift+Home / Shift+End -> Scroll navigation
+        if (event.shiftKey && event.key === 'PageUp') {
+          term.scrollPages(-1);
+          return false;
+        }
+        if (event.shiftKey && event.key === 'PageDown') {
+          term.scrollPages(1);
+          return false;
+        }
+        if (event.shiftKey && event.key === 'End') {
+          term.scrollToBottom();
+          return false;
+        }
+        if (event.shiftKey && event.key === 'Home') {
+          term.scrollToTop();
+          return false;
+        }
       }
       return true;
     });
@@ -469,6 +502,24 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       } catch {}
     };
 
+    let isFirstHistoryChunk = true;
+
+    const safeFit = () => {
+      if (isDisposed || !containerRef.current) return;
+      const { clientWidth, clientHeight } = containerRef.current;
+      if (clientWidth < 40 || clientHeight < 40) return;
+
+      const buffer = term.buffer.active;
+      const wasAtBottom = buffer.viewportY >= buffer.baseY - 1;
+
+      try {
+        fitAddon.fit();
+        if (wasAtBottom) {
+          term.scrollToBottom();
+        }
+      } catch {}
+    };
+
     const connectWs = () => {
       if (isDisposed) return;
       const wsUrl = getWsUrl(session.id);
@@ -483,23 +534,40 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           term.reset();
         }
         isFirstConnect = false;
+        isFirstHistoryChunk = true;
 
         setTimeout(() => {
           if (isDisposed) return;
-          try {
-            fitAddon.fit();
-            if (term.rows && term.cols && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-            }
-          } catch {}
+          safeFit();
+          if (term.rows && term.cols && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+          }
         }, 50);
       };
 
       ws.onmessage = (event) => {
+        const buffer = term.buffer.active;
+        const wasAtBottom = isFirstHistoryChunk || buffer.viewportY >= buffer.baseY - 1;
+
+        const onWriteDone = () => {
+          if (isFirstHistoryChunk) {
+            isFirstHistoryChunk = false;
+            term.scrollToBottom();
+          } else if (wasAtBottom) {
+            term.scrollToBottom();
+          } else {
+            const dist = term.buffer.active.baseY - term.buffer.active.viewportY;
+            if (dist > 1) {
+              setIsScrolledUp(true);
+              setLinesScrolledUp(dist);
+            }
+          }
+        };
+
         if (typeof event.data === 'string') {
-          term.write(event.data);
+          term.write(event.data, onWriteDone);
         } else if (event.data instanceof ArrayBuffer) {
-          term.write(new Uint8Array(event.data));
+          term.write(new Uint8Array(event.data), onWriteDone);
         }
         if (isAntigravity) {
           setIsAwaitingInput(false);
@@ -539,6 +607,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     window.addEventListener('online', handleOnlineOrVisible);
     document.addEventListener('visibilitychange', handleOnlineOrVisible);
 
+    const onScrollDisposable = term.onScroll(() => {
+      const buffer = term.buffer.active;
+      const dist = buffer.baseY - buffer.viewportY;
+      const isUp = dist > 2;
+      setIsScrolledUp(isUp);
+      setLinesScrolledUp(isUp ? dist : 0);
+    });
+
     const onBellDisposable = term.onBell(() => {
       setIsBelling(true);
       playVeronChime();
@@ -560,16 +636,15 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     });
 
     const resizeObserver = new ResizeObserver(() => {
-      try {
-        fitAddon.fit();
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-          if (isDisposed) return;
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && term.rows && term.cols) {
-            wsRef.current.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-          }
-        }, 60);
-      } catch {}
+      safeFit();
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (isDisposed) return;
+        safeFit();
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && term.rows && term.cols) {
+          wsRef.current.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+        }
+      }, 60);
     });
     resizeObserver.observe(containerRef.current);
 
@@ -581,6 +656,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       document.removeEventListener('visibilitychange', handleOnlineOrVisible);
       resizeObserver.disconnect();
       clearTimeout(checkInputTimer);
+      onScrollDisposable.dispose();
       onBellDisposable.dispose();
       onDataDisposable.dispose();
       if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
@@ -1436,6 +1512,21 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               <span>INITIALIZING CONPTY SHELL...</span>
             </div>
           </div>
+        )}
+
+        {/* Floating "Scroll to Bottom" Quick Action Pill */}
+        {isScrolledUp && (
+          <button
+            type="button"
+            onClick={handleScrollToBottom}
+            title="Scroll to bottom (Shift+End)"
+            className="absolute bottom-4 right-5 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent hover:bg-amber-400 text-zinc-950 font-semibold text-xs shadow-lg shadow-accent/25 hover:shadow-accent/40 border border-amber-300/40 transition-all duration-200 ease-apple press-scale cursor-pointer animate-in fade-in slide-in-from-bottom-2 select-none"
+          >
+            <ArrowDown className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>
+              {linesScrolledUp > 1 ? `Bottom (${linesScrolledUp} lines)` : 'Scroll to bottom'}
+            </span>
+          </button>
         )}
       </div>
     </div>
