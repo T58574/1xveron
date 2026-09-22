@@ -747,6 +747,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-accent font-mono text-[11px]">Ctrl + K</kbd>
               </div>
               <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                <span className="text-zinc-400">Search in Active Terminal</span>
+                <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-accent font-mono text-[11px]">Ctrl + F</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
                 <span className="text-zinc-400">Instant Split / New Pane</span>
                 <kbd className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-accent font-mono text-[11px]">Ctrl + Shift + T</kbd>
               </div>

@@ -531,6 +531,21 @@ impl SessionManager {
         }
     }
 
+    pub fn get_session_history(&self, id: &str, strip_ansi: bool) -> Option<(Vec<u8>, String)> {
+        let session = self.get_session(id)?;
+        let raw_bytes = {
+            let mut guard = session.history.lock();
+            guard.make_contiguous().to_vec()
+        };
+        let session_name = session.name.clone();
+        if strip_ansi {
+            let text = strip_ansi_escapes(&raw_bytes);
+            Some((text.into_bytes(), session_name))
+        } else {
+            Some((raw_bytes, session_name))
+        }
+    }
+
     pub fn save_single_image(
         &self,
         base64_data: &str,
@@ -875,7 +890,7 @@ fn detect_image_extension(header: &str, bytes: &[u8]) -> &'static str {
     }
 }
 
-fn sanitize_filename(name: &str) -> String {
+pub fn sanitize_filename(name: &str) -> String {
     let file_name = std::path::Path::new(name)
         .file_name()
         .and_then(|n| n.to_str())
@@ -921,6 +936,59 @@ pub fn format_capture_path(file_path: &str, relative_path: &str, format: Option<
             }
         }
     }
+}
+
+pub fn strip_ansi_escapes(input: &[u8]) -> String {
+    let mut out: Vec<u8> = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] == 0x1B {
+            i += 1;
+            if i < input.len() && input[i] == b'[' {
+                // CSI sequence: ESC [ ... final_byte (0x40..=0x7E)
+                i += 1;
+                while i < input.len() && !(0x40..=0x7E).contains(&input[i]) {
+                    i += 1;
+                }
+                if i < input.len() {
+                    i += 1;
+                }
+            } else if i < input.len() && input[i] == b']' {
+                // OSC sequence: ESC ] ... BEL (0x07) or ESC \ (0x1B 0x5C)
+                i += 1;
+                while i < input.len() {
+                    if input[i] == 0x07 {
+                        i += 1;
+                        break;
+                    }
+                    if input[i] == 0x1B && i + 1 < input.len() && input[i + 1] == b'\\' {
+                        i += 2;
+                        break;
+                    }
+                    i += 1;
+                }
+            } else if i < input.len() && (input[i] == b'(' || input[i] == b')') {
+                // Character set designation: ESC ( B, ESC ) 0, etc.
+                i += 2;
+            } else if i < input.len() {
+                // 2-byte escape sequence: ESC <char>
+                i += 1;
+            }
+        } else if input[i] == b'\r' {
+            if i + 1 < input.len() && input[i + 1] == b'\n' {
+                out.push(b'\n');
+                i += 2;
+            } else {
+                // Standalone carriage return (e.g. progress bar): emit newline
+                out.push(b'\n');
+                i += 1;
+            }
+        } else {
+            out.push(input[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).to_string()
 }
 
 #[cfg(test)]
@@ -1098,6 +1166,28 @@ mod tests {
         assert_eq!(size_after, 0);
 
         let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_strip_ansi_escapes_colors() {
+        let input = b"\x1b[31mRed Text\x1b[0m \x1b[1;32mBold Green\x1b[0m";
+        let cleaned = strip_ansi_escapes(input);
+        assert_eq!(cleaned, "Red Text Bold Green");
+    }
+
+    #[test]
+    fn test_strip_ansi_escapes_osc_and_cursor() {
+        // OSC 0;title BEL + cursor hide/show + clear screen
+        let input = b"\x1b]0;Veron Terminal\x07\x1b[?25lLoading...\x1b[?25h\x1b[2JDone!";
+        let cleaned = strip_ansi_escapes(input);
+        assert_eq!(cleaned, "Loading...Done!");
+    }
+
+    #[test]
+    fn test_strip_ansi_escapes_crlf_and_utf8() {
+        let input = "Строка 1\r\nСтрока 2\x1b[33m 🚀 Успех\x1b[0m\r\n".as_bytes();
+        let cleaned = strip_ansi_escapes(input);
+        assert_eq!(cleaned, "Строка 1\nСтрока 2 🚀 Успех\n");
     }
 }
 

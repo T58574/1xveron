@@ -217,6 +217,43 @@ export async function resizeSession(id: string, rows: number, cols: number): Pro
   });
 }
 
+export async function exportSessionLog(
+  sessionId: string,
+  sessionName: string,
+  format: 'text' | 'raw' = 'text'
+): Promise<string> {
+  const tokenParam = currentToken ? `&token=${encodeURIComponent(currentToken)}` : '';
+  const url = `${API_BASE}/api/sessions/${sessionId}/export?format=${format}${tokenParam}`;
+  const res = await fetch(url, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to export session log');
+
+  const blob = await res.blob();
+  const text = await blob.text();
+
+  try {
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = downloadUrl;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const ext = format === 'raw' ? 'raw.log' : 'log';
+    const cleanName = sessionName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.download = `veron_${cleanName}_${timestamp}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+    }, 100);
+  } catch (e) {
+    console.warn('[Veron] Auto-download triggered fallback:', e);
+  }
+
+  return text;
+}
+
 export async function uploadScreenshot(
   base64Data: string,
   sessionId?: string,

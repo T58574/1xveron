@@ -210,6 +210,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/sessions/:id", delete(close_session).patch(rename_session))
         .route("/api/sessions/:id/resize", post(resize_session))
         .route("/api/sessions/:id/input", post(send_session_input))
+        .route("/api/sessions/:id/export", get(export_session_history))
         .route(
             "/api/upload",
             post(upload_screenshot).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
@@ -615,6 +616,39 @@ async fn send_session_input(
         .write_input(&id, payload.data.as_bytes())
         .map(|_| StatusCode::OK)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+async fn export_session_history(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, (StatusCode, String)> {
+    if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
+        return Err((StatusCode::UNAUTHORIZED, "Unauthorized".into()));
+    }
+    let format = params.get("format").map(|s| s.as_str()).unwrap_or("text");
+    let strip_ansi = format != "raw";
+
+    if let Some((data, session_name)) = state.manager.get_session_history(&id, strip_ansi) {
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let safe_name = crate::session::sanitize_filename(&session_name);
+        let ext = if strip_ansi { "log" } else { "raw.log" };
+        let filename = format!("veron_{}_{}.{}", safe_name, timestamp, ext);
+
+        let mut res = Response::new(axum::body::Body::from(data));
+        *res.status_mut() = StatusCode::OK;
+        res.headers_mut().insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("text/plain; charset=utf-8"),
+        );
+        if let Ok(cd) = axum::http::HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename)) {
+            res.headers_mut().insert(axum::http::header::CONTENT_DISPOSITION, cd);
+        }
+        Ok(res)
+    } else {
+        Err((StatusCode::NOT_FOUND, "Session not found".into()))
+    }
 }
 
 async fn upload_screenshot(
@@ -1192,5 +1226,36 @@ mod tests {
         let uri: Uri = "/C:/Windows/win.ini".parse().unwrap();
         let res = static_file_handler(uri).await.into_response();
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn test_export_session_history_auth_check() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "veron_test_export_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        ));
+        let sm = Arc::new(SessionManager::with_captures_dir(temp_dir.clone()));
+        let state = AppState {
+            manager: sm,
+            port: 4567,
+            auth_token: "secret_123".to_string(),
+        };
+
+        let headers = HeaderMap::new();
+        let params = HashMap::new();
+        let res = export_session_history(
+            headers,
+            Query(params),
+            State(state.clone()),
+            Path("dummy_session".to_string()),
+        )
+        .await;
+        assert!(res.is_err());
+        assert_eq!(res.err().unwrap().0, StatusCode::UNAUTHORIZED);
+
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 }

@@ -3,7 +3,22 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { Maximize2, Minimize2, X, Plus, Terminal as TermIcon, Image, ImagePlus, Folder, Check } from 'lucide-react';
+import { SearchAddon } from '@xterm/addon-search';
+import {
+  Maximize2,
+  Minimize2,
+  X,
+  Plus,
+  Terminal as TermIcon,
+  Image,
+  ImagePlus,
+  Folder,
+  Check,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  Download,
+} from 'lucide-react';
 import { CapturePathFormat, SessionInfo } from '../types';
 import {
   getWsUrl,
@@ -12,6 +27,7 @@ import {
   copyToGlobalClipboard,
   readFromGlobalClipboard,
   openBrowserUrl,
+  exportSessionLog,
 } from '../services/api';
 import { AntigravityIcon } from './AntigravityIcon';
 import { VeronTheme } from '../services/theme';
@@ -76,6 +92,68 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const [isBelling, setIsBelling] = useState(false);
   const [isAwaitingInput, setIsAwaitingInput] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [searchRegex, setSearchRegex] = useState(false);
+  const [searchMatchIndex, setSearchMatchIndex] = useState(-1);
+  const [searchMatchTotal, setSearchMatchTotal] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const getSearchOptions = (caseSens: boolean, regex: boolean) => ({
+    caseSensitive: caseSens,
+    regex: regex,
+    incremental: true,
+    decorations: {
+      matchBackground: 'rgba(245, 158, 11, 0.25)',
+      matchBorder: 'rgba(245, 158, 11, 0.6)',
+      matchOverviewRuler: '#f59e0b',
+      activeMatchBackground: '#f59e0b',
+      activeMatchBorder: '#fbbf24',
+      activeMatchColorOverviewRuler: '#fbbf24',
+    },
+  });
+
+  const handleSearchNext = (
+    query = searchQuery,
+    caseSens = searchCaseSensitive,
+    regex = searchRegex
+  ) => {
+    if (!query || !searchAddonRef.current) return;
+    searchAddonRef.current.findNext(query, getSearchOptions(caseSens, regex));
+  };
+
+  const handleSearchPrev = (
+    query = searchQuery,
+    caseSens = searchCaseSensitive,
+    regex = searchRegex
+  ) => {
+    if (!query || !searchAddonRef.current) return;
+    searchAddonRef.current.findPrevious(query, getSearchOptions(caseSens, regex));
+  };
+
+  const handleCloseSearch = () => {
+    setIsSearchOpen(false);
+    searchAddonRef.current?.clearDecorations();
+    termRef.current?.focus();
+  };
+
+  const handleExportSession = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!session?.id) return;
+    setIsExporting(true);
+    try {
+      await exportSessionLog(session.id, session.name, 'text');
+      onToast(`Exported ${session.name} log`);
+    } catch (err) {
+      console.error('Failed to export log', err);
+      onToast('Failed to export session log');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   useEffect(() => {
     if (!session) {
@@ -174,6 +252,15 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       handleLinkActivation(uri);
     });
     term.loadAddon(webLinksAddon);
+
+    const searchAddon = new SearchAddon();
+    term.loadAddon(searchAddon);
+    searchAddonRef.current = searchAddon;
+
+    searchAddon.onDidChangeResults((e) => {
+      setSearchMatchIndex(e.resultIndex);
+      setSearchMatchTotal(e.resultCount);
+    });
 
     term.open(containerRef.current);
     try {
@@ -280,6 +367,26 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           if (isQuadrant || isAction) {
             return false;
           }
+        }
+
+        // 7. Ctrl+F / Cmd+F -> In-buffer terminal search
+        const isFKey =
+          event.key.toLowerCase() === 'f' ||
+          event.code === 'KeyF' ||
+          event.key === 'а' ||
+          event.key === 'А';
+        if ((event.ctrlKey || event.metaKey) && isFKey && !event.altKey && !event.shiftKey) {
+          event.preventDefault();
+          setIsSearchOpen(true);
+          const sel = term.getSelection()?.trim();
+          if (sel) {
+            setSearchQuery(sel);
+            setTimeout(() => {
+              searchAddon.findNext(sel, getSearchOptions(searchCaseSensitive, searchRegex));
+            }, 10);
+          }
+          setTimeout(() => searchInputRef.current?.focus(), 50);
+          return false;
         }
       }
       return true;
@@ -479,6 +586,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
         wsRef.current.close(1000);
       }
+      searchAddonRef.current = null;
       term.dispose();
     };
   }, [session?.id, isAntigravity]);
@@ -1112,6 +1220,41 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
             <span className="hidden 2xl:inline text-[11px] font-medium">Input images</span>
           </button>
 
+          {/* In-Buffer Search Toggle */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsSearchOpen((prev) => {
+                const next = !prev;
+                if (next) {
+                  setTimeout(() => searchInputRef.current?.focus(), 50);
+                } else {
+                  searchAddonRef.current?.clearDecorations();
+                  termRef.current?.focus();
+                }
+                return next;
+              });
+            }}
+            title="Search buffer (Ctrl+F)"
+            className={`p-1 rounded cursor-pointer transition-all duration-200 ease-apple press-scale ${
+              isSearchOpen
+                ? 'bg-accent/15 text-accent'
+                : 'text-zinc-400 hover:text-accent hover:bg-white/[0.06]'
+            }`}
+          >
+            <Search className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Export Session Log */}
+          <button
+            onClick={handleExportSession}
+            disabled={isExporting}
+            title="Export session history log (.log / text)"
+            className="p-1 rounded text-zinc-400 hover:text-accent hover:bg-white/[0.06] cursor-pointer transition-all duration-200 ease-apple press-scale disabled:opacity-50"
+          >
+            <Download className={`w-3.5 h-3.5 ${isExporting ? 'animate-bounce text-accent' : ''}`} />
+          </button>
+
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -1161,6 +1304,118 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       {/* Terminal Viewport */}
       <div className="flex-1 relative w-full h-full overflow-hidden p-1">
         <div ref={containerRef} className="w-full h-full" />
+
+        {/* Floating In-Buffer Search Bar (Ctrl+F) */}
+        {isSearchOpen && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute top-2 right-4 z-40 flex items-center gap-1.5 p-1.5 rounded-xl bg-[#0f1118]/95 backdrop-blur-md border border-amber-400/40 shadow-2xl text-xs text-zinc-200 select-none animate-in fade-in zoom-in-95 duration-150"
+          >
+            <Search className="w-3.5 h-3.5 text-accent shrink-0 ml-1" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchQuery(val);
+                handleSearchNext(val, searchCaseSensitive, searchRegex);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (e.shiftKey) {
+                    handleSearchPrev();
+                  } else {
+                    handleSearchNext();
+                  }
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleCloseSearch();
+                }
+              }}
+              placeholder="Search buffer..."
+              className="bg-black/50 border border-white/10 focus:border-amber-400/70 text-zinc-100 placeholder-zinc-500 rounded px-2 py-0.5 text-xs outline-none w-36 sm:w-48 font-mono"
+              autoFocus
+            />
+
+            {/* Match Counter Badge */}
+            <span className="text-[10px] font-mono text-zinc-400 min-w-8 text-center shrink-0">
+              {searchQuery
+                ? searchMatchTotal > 0
+                  ? `${searchMatchIndex >= 0 ? searchMatchIndex + 1 : '?'}/${searchMatchTotal}`
+                  : '0/0'
+                : ''}
+            </span>
+
+            {/* Prev Match Button */}
+            <button
+              type="button"
+              onClick={() => handleSearchPrev()}
+              title="Previous match (Shift+Enter)"
+              className="p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-100 transition-colors press-scale"
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Next Match Button */}
+            <button
+              type="button"
+              onClick={() => handleSearchNext()}
+              title="Next match (Enter)"
+              className="p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-100 transition-colors press-scale"
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Case Sensitive Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !searchCaseSensitive;
+                setSearchCaseSensitive(next);
+                handleSearchNext(searchQuery, next, searchRegex);
+              }}
+              title={searchCaseSensitive ? 'Case Sensitive: ON' : 'Case Sensitive: OFF'}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all press-scale ${
+                searchCaseSensitive
+                  ? 'bg-accent/20 text-accent border border-accent/40'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.06]'
+              }`}
+            >
+              Aa
+            </button>
+
+            {/* Regex Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !searchRegex;
+                setSearchRegex(next);
+                handleSearchNext(searchQuery, searchCaseSensitive, next);
+              }}
+              title={searchRegex ? 'Regular Expression: ON' : 'Regular Expression: OFF'}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all press-scale ${
+                searchRegex
+                  ? 'bg-accent/20 text-accent border border-accent/40'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.06]'
+              }`}
+            >
+              .*
+            </button>
+
+            {/* Close Search */}
+            <button
+              type="button"
+              onClick={handleCloseSearch}
+              title="Close search (Esc)"
+              className="p-1 rounded hover:bg-white/[0.08] text-zinc-400 hover:text-red-400 transition-colors press-scale ml-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Pulsing Energy Sphere Loader on Launch */}
         {isLoading && (

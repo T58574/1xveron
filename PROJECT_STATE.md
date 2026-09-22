@@ -39,6 +39,7 @@ All endpoints require Bearer auth (`?token=...` or `Authorization: Bearer <token
 | `GET`/`POST`/`DELETE` | `/api/sessions` | CRUD ConPTY terminal sessions |
 | `POST` | `/api/sessions/:id/input` | Send keystrokes / input to terminal stdin |
 | `POST` | `/api/sessions/:id/resize` | Resize ConPTY buffer geometry (`rows`, `cols`) |
+| `GET` | `/api/sessions/:id/export` | Stream / download session history (`.log`/`.txt`, ANSI stripped) |
 | `GET` | `/ws/terminal/:id` | Terminal bi-directional streaming (replays 512KB ring buffer) |
 | `POST` | `/api/upload` / `/upload/batch` | Save base64 image captures to `.veron/captures/` |
 | `GET`/`DELETE` | `/api/captures` | Get captures count/size or delete all captures |
@@ -67,5 +68,5 @@ All endpoints require Bearer auth (`?token=...` or `Authorization: Bearer <token
 
 ## 4. Active Roadmap (Next Tasks)
 
-1. **Session Export**: Export session history buffer to `.log` / `.txt` in 1 click.
-2. **Terminal Search (`Ctrl+F`)**: In-buffer regex & text search bar via `@xterm/addon-search`.
+1. **Session Workspace Search & Filter**: Quick filter session list in sidebar by name / cwd.
+2. **Custom Shortcut Rebinding**: Interactive hotkey configuration modal.
