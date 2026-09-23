@@ -11,6 +11,7 @@ pub fn set_clipboard(text: &str) -> Result<(), String> {
         fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
         fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
         fn GlobalUnlock(hMem: *mut std::ffi::c_void) -> i32;
+        fn GlobalFree(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
     }
 
     const CF_UNICODETEXT: u32 = 13;
@@ -42,6 +43,7 @@ pub fn set_clipboard(text: &str) -> Result<(), String> {
 
         let p_lock = GlobalLock(h_mem);
         if p_lock.is_null() {
+            GlobalFree(h_mem);
             CloseClipboard();
             return Err("GlobalLock failed".to_string());
         }
@@ -50,6 +52,7 @@ pub fn set_clipboard(text: &str) -> Result<(), String> {
         GlobalUnlock(h_mem);
 
         if SetClipboardData(CF_UNICODETEXT, h_mem).is_null() {
+            GlobalFree(h_mem);
             CloseClipboard();
             return Err("SetClipboardData failed".to_string());
         }

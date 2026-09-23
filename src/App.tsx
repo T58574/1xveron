@@ -768,6 +768,20 @@ export const App: React.FC = () => {
   // - Alt+1..6: Focus quadrant / pane 1..6
   // - Alt+M: Toggle maximize / restore current active pane
   // - Alt+W: Close active session in current slot
+  const activePaneIndexRef = useRef(activePaneIndex);
+  const maximizedPaneIndexRef = useRef(maximizedPaneIndex);
+  const currentSlotsRef = useRef(currentSlots);
+  const handleSplitPaneRef = useRef<() => void>();
+  const handleCloseSessionRef = useRef<(id: string) => void>();
+
+  useEffect(() => {
+    activePaneIndexRef.current = activePaneIndex;
+    maximizedPaneIndexRef.current = maximizedPaneIndex;
+    currentSlotsRef.current = currentSlots;
+    handleSplitPaneRef.current = handleSplitPane;
+    handleCloseSessionRef.current = handleCloseSession;
+  });
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 1. Quick Scripts: Ctrl+K / Cmd+K
@@ -790,7 +804,7 @@ export const App: React.FC = () => {
         e.key === 'В';
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (isTKey || isDKey)) {
         e.preventDefault();
-        handleSplitPane();
+        handleSplitPaneRef.current?.();
         return;
       }
 
@@ -799,7 +813,7 @@ export const App: React.FC = () => {
         e.preventDefault();
         const slotIdx = parseInt(e.key, 10) - 1;
         setActivePaneIndex(slotIdx);
-        if (maximizedPaneIndex !== null) {
+        if (maximizedPaneIndexRef.current !== null) {
           setMaximizedPaneIndex(slotIdx);
         }
         showToast(`Focused pane ${slotIdx + 1}`);
@@ -809,11 +823,12 @@ export const App: React.FC = () => {
       // 4. Alt + M: Toggle maximize active pane
       if (e.altKey && e.key.toLowerCase() === 'm') {
         e.preventDefault();
-        setMaximizedPaneIndex((prev) => (prev === activePaneIndex ? null : activePaneIndex));
+        const activeIdx = activePaneIndexRef.current;
+        setMaximizedPaneIndex((prev) => (prev === activeIdx ? null : activeIdx));
         showToast(
-          maximizedPaneIndex === activePaneIndex
+          maximizedPaneIndexRef.current === activeIdx
             ? 'Restored layout'
-            : `Maximized pane ${activePaneIndex + 1}`
+            : `Maximized pane ${activeIdx + 1}`
         );
         return;
       }
@@ -821,11 +836,12 @@ export const App: React.FC = () => {
       // 5. Alt + W: Close active session in current slot
       if (e.altKey && e.key.toLowerCase() === 'w') {
         e.preventDefault();
-        const sid = currentSlots[activePaneIndex];
+        const activeIdx = activePaneIndexRef.current;
+        const sid = currentSlotsRef.current[activeIdx];
         if (sid) {
-          handleCloseSession(sid);
+          handleCloseSessionRef.current?.(sid);
         } else {
-          showToast(`No active session in pane ${activePaneIndex + 1}`);
+          showToast(`No active session in pane ${activeIdx + 1}`);
         }
         return;
       }
@@ -833,7 +849,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activePaneIndex, maximizedPaneIndex, currentSlots, activeWorkspaceSessions.length, currentLayoutMode]);
+  }, []);
 
   const handleClearCaptures = async () => {
     try {

@@ -3,7 +3,7 @@
 > **Target Audience:** Future AI Agents (Antigravity, Gemini, Claude, Cursor) & Lead Engineers.  
 > **Repository:** `C:\Users\user\Documents\dev\veron`  
 > **Version:** 0.1.0-alpha (Milestone 6: Cybran Amber & ConPTY Teardown)  
-> **Last Verified:** 2026-09-09
+> **Last Verified:** 2026-09-23
 
 ---
 
@@ -27,11 +27,11 @@
 
 | Tier | Technologies |
 | :--- | :--- |
-| **Backend / Core** | Rust 2021, Tokio 1.43, Axum 0.8, Tower-HTTP 0.6 |
+| **Backend / Core** | Rust 2021, Tokio 1.40, Axum 0.7, Tower-HTTP 0.6 |
 | **Terminal Subsystem** | `portable-pty 0.8` (Windows ConPTY / Unix pseudo-terminals) |
-| **Desktop Shell** | `tao 0.31` (Event loop & native window), `wry 0.47` (WebView2 engine) |
+| **Desktop Shell** | `tao 0.37` (Event loop & native window), `wry 0.57` (WebView2 engine) |
 | **Asset Embedding** | `rust-embed 8.12` (Bakes `dist/` into binary at compile time) |
-| **Frontend** | React 19, TypeScript 5.7, Vite 6.0, Tailwind CSS 4 |
+| **Frontend** | React 18.3, TypeScript 5.7, Vite 5.4, Tailwind CSS 3.4 |
 | **Terminal Emulator** | `@xterm/xterm 5.5`, `@xterm/addon-fit 0.10`, `@xterm/addon-webgl 0.16` |
 | **UI Components** | Lucide React, Custom Glassmorphism Canvas |
 
@@ -142,16 +142,32 @@ All endpoints require authentication via Bearer token:
 ### Endpoints
 | Method | Path | Payload | Response / Description |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/status` | — | `{ "status": "ok", "version": "0.1.0", "sessions_count": 2 }` |
-| `GET` | `/api/sessions` | — | Array of `SessionInfo` (`id`, `name`, `shell`, `cols`, `rows`, `created_at`, `status`) |
+| `GET` | `/api/system` | — | `SystemInfo` (version, hostname, os, sessions count, network interfaces) |
+| `POST` | `/api/auth/verify` | `{"token": "..."}` | Token validation |
+| `GET` | `/api/active` | — | Active workspace & session state |
+| `POST` | `/api/active` | `{"workspace_id": "...", "session_id": "..."}` | Set active state |
+| `GET` | `/api/sessions` | — | Array of `SessionInfo` |
 | `POST` | `/api/sessions` | `{"name": "...", "shell": "powershell.exe", "cols": 120, "rows": 30}` | Created `SessionInfo` |
 | `DELETE` | `/api/sessions/:id` | — | `{ "success": true }` (terminates process tree) |
 | `PATCH` | `/api/sessions/:id` | `{"name": "New Name"}` | Updated `SessionInfo` |
 | `POST` | `/api/sessions/:id/input` | `{"data": "ls\r"}` | Injects input into PTY stdin |
 | `POST` | `/api/sessions/:id/resize` | `{"cols": 140, "rows": 40}` | Resizes ConPTY buffer |
-| `GET` | `/api/sessions/:id/ws` | Query: `?token=<token>` | **WebSocket**: Binary/Text stream. Replays 512 KB history on connect. |
+| `GET` | `/api/sessions/:id/export` | — | Export session history as text |
+| `GET` | `/api/captures` | — | Captures directory info & file list |
+| `DELETE` | `/api/captures` | — | Clear all captures |
+| `POST` | `/api/captures/cleanup` | `{"older_than_days": 7, "max_total_mb": 100}` | Clean old/excess captures |
 | `POST` | `/api/captures/open` | `{"path": "..."}` or `{"url": "..."}` | Opens file in Explorer/Editor via native OS shell |
-| `POST` | `/api/captures/cleanup` | `{"older_than_days": 7, "max_total_mb": 100}` | Clean old/excess captures with disk space report |
+| `GET` | `/api/workspaces` | — | Array of `Workspace` |
+| `POST` | `/api/workspaces` | `{"name": "..."}` | Created `Workspace` |
+| `DELETE` | `/api/workspaces/:id` | — | Delete workspace & close its sessions |
+| `PATCH` | `/api/workspaces/:id` | `{"name": "New Name"}` | Rename workspace |
+| `GET` | `/api/git/status` | Query: `?path=...` | Git status for given repo path |
+| `GET` | `/api/git/diff` | Query: `?path=...` | Git diff output |
+| `GET` | `/api/git/branches` | Query: `?path=...` | Branch list |
+| `GET` | `/api/ports` | — | Array of detected listening ports |
+| `POST` | `/api/open-url` | `{"url": "..."}` | Open URL in default browser |
+| `GET/POST` | `/api/clipboard` | GET: read, POST: `{"text": "..."}` | Native clipboard read/write |
+| `GET` | `/ws/terminal/:id` | Query: `?token=<token>` | **WebSocket**: Binary/Text stream. Replays 512 KB history on connect. |
 
 ---
 
@@ -184,7 +200,8 @@ veron/
 │   │   ├── SettingsModal.tsx  # Keyboard shortcuts, theme, AGY mode toggles
 │   │   ├── RemoteModal.tsx    # Mobile LAN IP & QR code authorization modal
 │   │   ├── GitDiffModal.tsx   # Live git diff inspector & branch status
-│   │   └── PortIndicator.tsx  # Active local port detection & scanner
+│   │   ├── ErrorBoundary.tsx  # React error boundary with Cybran Amber fallback UI
+│   │   ├── PortIndicator.tsx  # Active local port detection & scanner
 │   └── services/
 │       └── api.ts             # REST & WebSocket client with 4-tier clipboard engine
 ├── src-tauri/                 # Rust Core & Desktop Engine

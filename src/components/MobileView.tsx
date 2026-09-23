@@ -181,6 +181,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
     let retryCount = 0;
     let resizeTimeout: any = null;
     let isFirstConnect = true;
+    let isFirstHistoryChunk = true;
 
     const connectWs = () => {
       if (isDisposed) return;
@@ -195,6 +196,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
           term.reset();
         }
         isFirstConnect = false;
+        isFirstHistoryChunk = true;
 
         setTimeout(() => {
           if (isDisposed) return;
@@ -208,10 +210,17 @@ export const MobileView: React.FC<MobileViewProps> = ({
       };
 
       ws.onmessage = (event) => {
+        const onWriteDone = () => {
+          if (isFirstHistoryChunk) {
+            isFirstHistoryChunk = false;
+            term.scrollToBottom();
+          }
+        };
+
         if (typeof event.data === 'string') {
-          term.write(event.data);
+          term.write(event.data, onWriteDone);
         } else if (event.data instanceof ArrayBuffer) {
-          term.write(new Uint8Array(event.data));
+          term.write(new Uint8Array(event.data), onWriteDone);
         }
       };
 
@@ -325,13 +334,29 @@ export const MobileView: React.FC<MobileViewProps> = ({
       }
       term.dispose();
     };
-  }, [activeSession?.id, theme]);
+  }, [activeSession?.id]);
 
   useEffect(() => {
-    if (termRef.current && activeTheme) {
-      termRef.current.options.theme = activeTheme.xterm;
+    if (termRef.current) {
+      if (activeTheme?.xterm) {
+        termRef.current.options.theme = activeTheme.xterm;
+      } else {
+        termRef.current.options.theme = theme === 'dark'
+          ? {
+              background: '#090a0d',
+              foreground: '#f4f4f5',
+              cursor: '#f59e0b',
+              selectionBackground: 'rgba(245, 158, 11, 0.28)',
+            }
+          : {
+              background: '#ffffff',
+              foreground: '#09090b',
+              cursor: '#d97706',
+              selectionBackground: 'rgba(217, 119, 6, 0.2)',
+            };
+      }
     }
-  }, [activeTheme]);
+  }, [activeTheme, theme]);
 
   const sendKey = (seq: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

@@ -127,7 +127,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
             match tokio::net::TcpListener::bind(addr).await {
                 Ok(listener) => {
-                    let _ = axum::serve(listener, router).await;
+                    if let Err(e) = axum::serve(listener, router).await {
+                        tracing::error!("Axum server error: {}", e);
+                    }
                 }
                 Err(err) => {
                     eprintln!("ERROR: Failed to bind to port {}: {}", port, err);

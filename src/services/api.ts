@@ -9,7 +9,21 @@ import {
   Workspace,
 } from '../types';
 
-const SERVER_PORT = 4567;
+const DEFAULT_PORT = 4567;
+const DEV_PORTS = ['1420', '5173'];
+
+/**
+ * Resolve the active server port from window.location.
+ * In production/custom-port mode, the WebView URL already points to the correct port.
+ * Only fall back to DEFAULT_PORT when running under a Vite dev server (ports 1420/5173).
+ */
+function resolvePort(): string {
+  const { port } = window.location;
+  if (!port || DEV_PORTS.includes(port)) {
+    return String(DEFAULT_PORT);
+  }
+  return port;
+}
 
 // Token extraction from URL query or localStorage
 let currentToken: string = (() => {
@@ -32,19 +46,15 @@ export function getAuthToken(): string {
 }
 
 export function getBaseUrl(): string {
-  const { protocol, hostname, port } = window.location;
-  if (port === String(SERVER_PORT)) {
-    return `${protocol}//${hostname}:${port}`;
-  }
-  return `${protocol}//${hostname}:${SERVER_PORT}`;
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:${resolvePort()}`;
 }
 
 export function getWsUrl(sessionId: string): string {
-  const { hostname, port } = window.location;
+  const { hostname } = window.location;
   const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const targetPort = port === String(SERVER_PORT) ? port : String(SERVER_PORT);
   const tokenQuery = currentToken ? `?token=${encodeURIComponent(currentToken)}` : '';
-  return `${wsProto}//${hostname}:${targetPort}/ws/terminal/${sessionId}${tokenQuery}`;
+  return `${wsProto}//${hostname}:${resolvePort()}/ws/terminal/${sessionId}${tokenQuery}`;
 }
 
 const API_BASE = getBaseUrl();

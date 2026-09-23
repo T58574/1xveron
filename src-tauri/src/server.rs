@@ -560,7 +560,8 @@ async fn close_session(
     if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
         return StatusCode::UNAUTHORIZED;
     }
-    if state.manager.close_session(&id) {
+    let manager = state.manager.clone();
+    if tokio::task::spawn_blocking(move || manager.close_session(&id)).await.unwrap() {
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND
@@ -846,11 +847,12 @@ async fn create_workspace(
             .map(std::path::PathBuf::from)
             .unwrap_or(default_dir);
 
-        let branch_name = branch.as_deref().unwrap_or(name);
-        match crate::git::create_git_worktree(&base_path, branch_name) {
+        let branch_name = branch.as_deref().unwrap_or(name).to_string();
+        let branch_name_clone = branch_name.clone();
+        match tokio::task::spawn_blocking(move || crate::git::create_git_worktree(&base_path, &branch_name_clone)).await.unwrap() {
             Ok(worktree_dir) => {
                 path = Some(worktree_dir.to_string_lossy().to_string());
-                branch = Some(branch_name.to_string());
+                branch = Some(branch_name);
                 is_worktree = Some(true);
             }
             Err(err) => {
@@ -881,7 +883,8 @@ async fn delete_workspace(
     if !is_authorized(&headers, params.get("token").map(|s| s.as_str()), &state) {
         return StatusCode::UNAUTHORIZED;
     }
-    if state.manager.remove_workspace(&id) {
+    let manager = state.manager.clone();
+    if tokio::task::spawn_blocking(move || manager.remove_workspace(&id)).await.unwrap() {
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND
@@ -919,7 +922,7 @@ async fn get_git_status_handler(
         .map(std::path::PathBuf::from)
         .unwrap_or(default_dir);
 
-    Ok(Json(crate::git::get_git_status(&target_dir)))
+    Ok(Json(tokio::task::spawn_blocking(move || crate::git::get_git_status(&target_dir)).await.unwrap()))
 }
 
 async fn get_git_diff_handler(
@@ -935,9 +938,9 @@ async fn get_git_diff_handler(
         .get("path")
         .map(std::path::PathBuf::from)
         .unwrap_or(default_dir);
-    let file = params.get("file").map(|s| s.as_str());
+    let file = params.get("file").map(|s| s.to_string());
 
-    match crate::git::get_git_diff(&target_dir, file) {
+    match tokio::task::spawn_blocking(move || crate::git::get_git_diff(&target_dir, file.as_deref())).await.unwrap() {
         Ok(diff) => Ok(Json(GitDiffResponse { diff })),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
@@ -957,7 +960,7 @@ async fn get_git_branches_handler(
         .map(std::path::PathBuf::from)
         .unwrap_or(default_dir);
 
-    match crate::git::get_git_branches(&target_dir) {
+    match tokio::task::spawn_blocking(move || crate::git::get_git_branches(&target_dir)).await.unwrap() {
         Ok(branches) => Ok(Json(branches)),
         Err(_) => Ok(Json(vec![])),
     }
@@ -1049,6 +1052,12 @@ async fn handle_terminal_socket(
     let session_id = session.id.clone();
     let session_id_clone = session_id.clone();
 
+    let last_pong = Arc::new(std::sync::atomic::AtomicU64::new(
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    ));
+    let last_pong_send = last_pong.clone();
+    let last_pong_recv = last_pong.clone();
+
     // Task to forward PTY output -> WebSocket (with 25s heartbeat ping)
     let mut send_task = tokio::spawn(async move {
         let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(25));
@@ -1072,6 +1081,12 @@ async fn handle_terminal_socket(
                     }
                 }
                 _ = ping_interval.tick() => {
+                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+                    let last = last_pong_send.load(std::sync::atomic::Ordering::Relaxed);
+                    if now.saturating_sub(last) > 60 {
+                        tracing::warn!("WebSocket zombie detected (no pong in 60s), closing");
+                        break;
+                    }
                     if ws_sender.send(Message::Ping(vec![])).await.is_err() {
                         break;
                     }
@@ -1084,6 +1099,12 @@ async fn handle_terminal_socket(
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = ws_receiver.next().await {
             match msg {
+                Message::Pong(_) => {
+                    last_pong_recv.store(
+                        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        std::sync::atomic::Ordering::Relaxed
+                    );
+                }
                 Message::Text(text) => {
                     if let Ok(cmd) = serde_json::from_str::<WsClientMessage>(&text) {
                         match cmd {

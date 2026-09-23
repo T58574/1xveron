@@ -674,6 +674,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     }
   }, [activeTheme]);
 
+  const agyModeRef = useRef(agyMode);
+  const capturePathFormatRef = useRef(capturePathFormat);
+
+  useEffect(() => {
+    agyModeRef.current = agyMode;
+    capturePathFormatRef.current = capturePathFormat;
+  }, [agyMode, capturePathFormat]);
+
   const processAndUploadImage = async (imageFile: File | Blob) => {
     if (!session || isUploadingRef.current) return;
     isUploadingRef.current = true;
@@ -683,20 +691,22 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         const base64 = e.target?.result as string;
         if (base64) {
           try {
-            onToast(agyMode ? 'Archiving capture (AGY Mode)...' : 'Saving capture...');
-            const shouldPaste = !agyMode;
+            const currentAgyMode = agyModeRef.current;
+            const currentFormat = capturePathFormatRef.current;
+            onToast(currentAgyMode ? 'Archiving capture (AGY Mode)...' : 'Saving capture...');
+            const shouldPaste = !currentAgyMode;
             const res = await uploadScreenshot(
               base64,
               session.id,
               undefined,
               shouldPaste,
-              capturePathFormat
+              currentFormat
             );
             const baseName = res.file_path.split('/').pop() || 'screenshot.png';
             let formattedPath = res.file_path;
-            if (capturePathFormat === 'relative') {
+            if (currentFormat === 'relative') {
               formattedPath = res.relative_path || res.file_path;
-            } else if (capturePathFormat === 'markdown') {
+            } else if (currentFormat === 'markdown') {
               formattedPath = `![screenshot](file:///${res.file_path.replace(/^\/+/, '')})`;
             }
             
@@ -705,7 +715,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
               await copyToGlobalClipboard(formattedPath);
             } catch {}
 
-            if (agyMode) {
+            if (currentAgyMode) {
               onToast(`Archived & copied: ${baseName}`);
             } else {
               onToast(`Captured & pasted: ${baseName}`);
